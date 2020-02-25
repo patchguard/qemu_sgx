@@ -36,5 +36,5 @@ int kvm_device_msix_set_vector(KVMState *s, uint32_t dev_id, uint32_t vector,
                                int virq);
 int kvm_device_msix_assign(KVMState *s, uint32_t dev_id);
 int kvm_device_msix_deassign(KVMState *s, uint32_t dev_id);
-
+bool kvm_enable_sgx_provisioning(KVMState *s);
 #endif

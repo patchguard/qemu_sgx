@@ -1058,6 +1058,7 @@ build_ssdt(GArray *table_data, GArray *linker,
     int ssdt_start = table_data->len;
     uint8_t *ssdt_ptr;
     int i;
+    GArray *sgx_table = build_alloc_array();
 
     /* The current AML generator can cover the APIC ID range [0..255],
      * inclusive, for VCPU hotplug. */

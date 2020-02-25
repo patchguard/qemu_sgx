@@ -135,6 +135,9 @@ static void pc_init1(MachineState *machine,
         above_4g_mem_size = 0;
         below_4g_mem_size = machine->ram_size;
     }
+    if (pcmc->pci_enabled) {
+        pc_machine_init_sgx_epc(pcms);
+    }
 
     if (xen_enabled() && xen_hvm_init(&below_4g_mem_size, &above_4g_mem_size,
                                       &ram_memory) != 0) {

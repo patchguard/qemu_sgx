@@ -1238,6 +1238,10 @@ FWCfgState *pc_memory_init(MachineState *machine,
         e820_add_entry(0x100000000ULL, above_4g_mem_size, E820_RAM);
     }
 
+    if (pcms->sgx_epc != NULL) {
+        e820_add_entry(pcms->sgx_epc->base, pcms->sgx_epc->size, E820_RESERVED);
+    }
+
     if (!guest_info->has_reserved_memory &&
         (machine->ram_slots ||
          (machine->maxram_size > machine->ram_size))) {
@@ -1246,6 +1250,16 @@ FWCfgState *pc_memory_init(MachineState *machine,
         error_report("\"-memory 'slots|maxmem'\" is not supported by: %s",
                      mc->name);
         exit(EXIT_FAILURE);
+    }
+
+    /* always allocate the device memory information */
+    machine->device_memory = g_malloc0(sizeof(*machine->device_memory));
+ 
+    if (sgx_epc_above_4g(pcms->sgx_epc)) {
+        pcms->hotplug_memory_base = sgx_epc_above_4g_end(pcms->sgx_epc);
+    } else {
+        pcms->hotplug_memory_base =
+            0x100000000ULL + pcms->above_4g_mem_size;
     }
 
     /* initialize hotplug memory address space */
@@ -1261,7 +1275,8 @@ FWCfgState *pc_memory_init(MachineState *machine,
         }
 
         pcms->hotplug_memory_base =
-            ROUND_UP(0x100000000ULL + above_4g_mem_size, 1ULL << 30);
+//            ROUND_UP(0x100000000ULL + above_4g_mem_size, 1ULL << 30);
+            ROUND_UP(pcms->hotplug_memory_base, 1ULL << 30);
 
         if ((pcms->hotplug_memory_base + hotplug_mem_size) <
             hotplug_mem_size) {

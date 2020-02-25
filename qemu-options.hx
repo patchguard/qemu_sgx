@@ -253,6 +253,15 @@ STEXI
 Preallocate memory when using -mem-path.
 ETEXI
 
+DEF("sgx-epc", HAS_ARG, QEMU_OPTION_sgx_epc,
+    "-sgx-epc memdev=memid[,id=epcid]\n",
+    QEMU_ARCH_I386)
+STEXI
+@item -sgx-epc memdev=@var{memid}[,id=@var{epcid}]
+@findex -sgx-epc
+Define an SGX EPC section.
+ETEXI
+
 DEF("k", HAS_ARG, QEMU_OPTION_k,
     "-k language     use keyboard layout (for example 'fr' for French)\n",
     QEMU_ARCH_ALL)
@@ -1044,6 +1053,10 @@ Enable/disable audio stream compression (using celt 0.5.1).  Default is on.
 
 @item seamless-migration=[on|off]
 Enable/disable spice seamless migration. Default is off.
+
+@item epc=size
+Defines the maximum size of the guest's SGX EPC, required for running
+SGX enclaves in the guest.  The default is 0.
 
 @end table
 ETEXI

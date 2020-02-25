@@ -27,4 +27,8 @@ uint32_t kvm_arch_get_supported_cpuid(KVMState *env, uint32_t function,
 {
     abort();
 }
+bool kvm_enable_sgx_provisioning(void)
+{
+    return false;
+}
 #endif

@@ -128,7 +128,9 @@ static void pc_q35_init(MachineState *machine)
                                       &ram_memory) != 0) {
         fprintf(stderr, "xen hardware virtual machine initialisation failed\n");
         exit(1);
-    }
+    } else {
+        pc_machine_init_sgx_epc(pcms);
+     }
 
     icc_bridge = qdev_create(NULL, TYPE_ICC_BRIDGE);
     object_property_add_child(qdev_get_machine(), "icc-bridge",

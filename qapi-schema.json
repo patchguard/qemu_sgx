@@ -3361,13 +3361,39 @@
 }
 
 ##
+# @SGXEPCDeviceInfo:
+#
+# SGX EPC state information
+#
+# @id: device's ID
+#
+# @addr: physical address, where device is mapped
+#
+# @size: size of memory that the device provides
+#
+# @node: NUMA node number where device is plugged in
+#
+# @memdev: memory backend linked with device
+#
+# Since: TBD
+##
+{ 'struct': 'SGXEPCDeviceInfo',
+  'data': { '*id': 'str',
+            'addr': 'int',
+            'size': 'int',
+            'node': 'int',
+            'memdev': 'str'
+          }
+}
+
+##
 # @MemoryDeviceInfo:
 #
 # Union containing information about a memory device
 #
 # Since: 2.1
 ##
-{ 'union': 'MemoryDeviceInfo', 'data': {'dimm': 'PCDIMMDeviceInfo'} }
+{ 'union': 'MemoryDeviceInfo', 'data': {'dimm': 'PCDIMMDeviceInfo','sgx-epc': 'SGXEPCDeviceInfo'} }
 
 ##
 # @query-memory-devices

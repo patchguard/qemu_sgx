@@ -47,6 +47,7 @@
 #ifndef CONFIG_USER_ONLY
 #include "hw/xen/xen.h"
 #include "hw/i386/apic_internal.h"
+#include "hw/i386/sgx-epc.h"
 #endif
 
 
@@ -257,11 +258,57 @@ static const char *svm_feature_name[] = {
 };
 
 static const char *cpuid_7_0_ebx_feature_name[] = {
-    "fsgsbase", NULL, NULL, "bmi1", "hle", "avx2", NULL, "smep",
+    "fsgsbase", NULL, "sgx", "bmi1", "hle", "avx2", NULL, "smep",
     "bmi2", "erms", "invpcid", "rtm", NULL, NULL, NULL, NULL,
     NULL, NULL, "rdseed", "adx", "smap", NULL, NULL, NULL,
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 };
+
+static const char *cpuid_7_0_ecx_feature_name[] = {
+            NULL, "avx512vbmi", "umip", "pku",
+            NULL /* ospke */, "waitpkg", "avx512vbmi2", NULL,
+            "gfni", "vaes", "vpclmulqdq", "avx512vnni",
+            "avx512bitalg", NULL, "avx512-vpopcntdq", NULL,
+            "la57", NULL, NULL, NULL,
+            NULL, NULL, "rdpid", NULL,
+            NULL, "cldemote", NULL, "movdiri",
+            "movdir64b", NULL, "sgxlc", NULL,
+};
+
+static const char *cpuid_12_0_eax_feature_name[] = {
+            "sgx1", "sgx2", NULL, NULL,
+            NULL, "sgx-enclv", "sgx-encls-c", NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+};
+
+
+static const char *cpuid_12_1_eax_feature_name[] = {
+            NULL /* sgx-init */, "sgx-debug", "sgx-mode64", NULL,
+            "sgx-provisionkey", "sgx-tokenkey", NULL, "sgx-kss",
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+};
+
+static const char *cpuid_12_1_ebx_feature_name[] = {
+            "sgx-exinfo" , NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+}
+
 
 static const char *cpuid_apm_edx_feature_name[] = {
     NULL, NULL, NULL, NULL,
@@ -328,6 +375,12 @@ static const char *cpuid_apm_edx_feature_name[] = {
           CPUID_7_0_EBX_FSGSBASE, CPUID_7_0_EBX_HLE, CPUID_7_0_EBX_AVX2,
           CPUID_7_0_EBX_ERMS, CPUID_7_0_EBX_INVPCID, CPUID_7_0_EBX_RTM,
           CPUID_7_0_EBX_RDSEED */
+#define TCG_7_0_ECX_FEATURES 0
+#define TCG_SGX_12_0_EAX_FEATURES 0
+#define TCG_SGX_12_1_EAX_FEATURES 0
+#define TCG_SGX_12_1_EBX_FEATURES 0
+
+
 #define TCG_APM_FEATURES 0
 
 
@@ -384,6 +437,37 @@ static FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
         .cpuid_reg = R_EBX,
         .tcg_features = TCG_7_0_EBX_FEATURES,
     },
+    [FEAT_7_0_ECX] = {
+        .feat_names = cpuid_7_0_ecx_feature_name,
+        .cpuid_eax = 7,
+        .cpuid_needs_ecx = true, .cpuid_ecx = 0,
+        .cpuid_reg = R_ECX,
+        .tcg_features = TCG_7_0_ECX_FEATURES,
+    },
+    [FEAT_SGX_12_0_EAX] = {
+        .feat_names = cpuid_12_0_eax_feature_name,
+        .cpuid_eax= 0x12,
+        .cpuid_needs_ecx = true, .cpuid_ecx = 1,
+        .cpuid_reg = R_EAX,
+        .tcg_features = TCG_SGX_12_0_EAX_FEATURES,
+    },
+    [FEAT_SGX_12_1_EAX] = {
+        .feat_names = cpuid_12_1_eax_feature_name,
+        .cpuid_eax= 0x12,
+        .cpuid_needs_ecx = true, .cpuid_ecx = 1,
+        .cpuid_reg = R_EAX,
+        .tcg_features = TCG_SGX_12_1_EAX_FEATURES,
+    },
+    [FEAT_SGX_12_1_EBX] = {
+        .feat_names = cpuid_12_1_ebx_feature_name,
+        .cpuid_eax= 0x12,
+        .cpuid_needs_ecx = true, .cpuid_ecx = 1,
+        .cpuid_reg = R_EBX,
+        .tcg_features = TCG_SGX_12_1_EBX_FEATURES,
+    },
+
+
+
     [FEAT_8000_0007_EDX] = {
         .feat_names = cpuid_apm_edx_feature_name,
         .cpuid_eax = 0x80000007,
@@ -397,7 +481,7 @@ typedef struct X86RegisterInfo32 {
     /* Name of register */
     const char *name;
     /* QAPI enum value register */
-    X86CPURegister32 qapi_enum;
+    cpuid_12_1_ebx_feature_name,X86CPURegister32 qapi_enum;
 } X86RegisterInfo32;
 
 #define REGISTER(reg) \
@@ -2296,10 +2380,38 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
     case 7:
         /* Structured Extended Feature Flags Enumeration Leaf */
         if (count == 0) {
-            *eax = 0; /* Maximum ECX value for sub-leaves */
+            /* Maximum ECX value for sub-leaves */
+            *eax = env->cpuid_level_func7;
             *ebx = env->features[FEAT_7_0_EBX]; /* Feature flags */
-            *ecx = 0; /* Reserved */
-            *edx = 0; /* Reserved */
+            *ecx = env->features[FEAT_7_0_ECX]; /* Feature flags */
+            if ((*ecx & CPUID_7_0_ECX_PKU) && env->cr[4] & CR4_PKE_MASK) {
+                *ecx |= CPUID_7_0_ECX_OSPKE;
+            }
+            *edx = env->features[FEAT_7_0_EDX]; /* Feature flags */
+
+            /*
+             * SGX cannot be emulated in software.  If hardware does not
+             * support enabling SGX and/or SGX flexible launch control,
+             * then we need to update the VM's CPUID values accordingly.
+             */
+            if ((*ebx & CPUID_7_0_EBX_SGX) &&
+                (!kvm_enabled() ||
+                 !(kvm_arch_get_supported_cpuid(cs->kvm_state, 0x7, 0, R_EBX) &
+                    CPUID_7_0_EBX_SGX))) {
+                *ebx &= ~CPUID_7_0_EBX_SGX;
+            }
+
+            if ((*ecx & CPUID_7_0_ECX_SGX_LC) &&
+                (!(*ebx & CPUID_7_0_EBX_SGX) || !kvm_enabled() ||
+                 !(kvm_arch_get_supported_cpuid(cs->kvm_state, 0x7, 0, R_ECX) &
+                    CPUID_7_0_ECX_SGX_LC))) {
+                *ecx &= ~CPUID_7_0_ECX_SGX_LC;
+            }
+       } else if (count == 1) {
+           *eax = env->features[FEAT_7_1_EAX];
+            *ebx = 0;
+            *ecx = 0;
+            *edx = 0;
         } else {
             *eax = 0;
             *ebx = 0;
@@ -2375,6 +2487,64 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
         }
         break;
     }
+    case 0x12:
+#ifndef CONFIG_USER_ONLY
+        if (!kvm_enabled() ||
+            !(env->features[FEAT_7_0_EBX] & CPUID_7_0_EBX_SGX)) {
+            *eax = *ebx = *ecx = *edx = 0;
+            break;
+        }
+
+        /*
+         * SGX sub-leafs CPUID.0x12.{0x2..N} enumerate EPC sections.  Retrieve
+         * the EPC properties, e.g. confidentiality and integrity, from the
+         * host's first EPC section, i.e. assume there is one EPC section or
+         * that all EPC sections have the same security properties.
+         */
+        if (count > 1) {
+            uint64_t epc_addr, epc_size;
+
+            if (sgx_epc_get_section(count - 2, &epc_addr, &epc_size)) {
+                *eax = *ebx = *ecx = *edx = 0;
+                break;
+            }
+            host_cpuid(index, 2, eax, ebx, ecx, edx);
+            *eax = (uint32_t)(epc_addr & 0xfffff000) | 0x1;
+            *ebx = (uint32_t)(epc_addr >> 32);
+            *ecx = (uint32_t)(epc_size & 0xfffff000) | (*ecx & 0xf);
+            *edx = (uint32_t)(epc_size >> 32);
+            break;
+        }
+
+        /*
+         * SGX sub-leafs CPUID.0x12.{0x0,0x1} are heavily dependent on hardware
+         * and KVM, i.e. QEMU cannot emulate features to override what KVM
+         * supports.  Features can be further restricted by userspace, but not
+         * made more permissive.
+         */
+        *eax = kvm_arch_get_supported_cpuid(cs->kvm_state, 0x12, count, R_EAX);
+        *ebx = kvm_arch_get_supported_cpuid(cs->kvm_state, 0x12, count, R_EBX);
+        *ecx = kvm_arch_get_supported_cpuid(cs->kvm_state, 0x12, count, R_ECX);
+        *edx = kvm_arch_get_supported_cpuid(cs->kvm_state, 0x12, count, R_EDX);
+
+        if (count == 0) {
+            *eax &= env->features[FEAT_SGX_12_0_EAX];
+        } else {
+            *eax &= env->features[FEAT_SGX_12_1_EAX];
+            *ebx &= env->features[FEAT_SGX_12_1_EBX];
+            *ecx &= env->features[FEAT_XSAVE_COMP_LO];
+            *edx &= env->features[FEAT_XSAVE_COMP_HI];
+
+            /* FP and SSE are always allowed regardless of XSAVE/XCR0. */
+            *ecx |= XSTATE_FP_MASK | XSTATE_SSE_MASK;
+
+            if ((*eax & (1U << 4)) &&
+                !kvm_enable_sgx_provisioning(cs->kvm_state)) {
+                *eax &= ~(1U << 4);
+            }
+        }
+#endif
+        break;
     case 0x80000000:
         *eax = env->cpuid_xlevel;
         *ebx = env->cpuid_vendor1;

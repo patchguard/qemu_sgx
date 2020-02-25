@@ -615,6 +615,25 @@ int kvm_arch_init_vcpu(CPUState *cs)
                 c = &cpuid_data.entries[cpuid_i++];
             }
             break;
+        case 0x12:
+            for (j = 0; ; j++) {
+                c->function = i;
+                c->flags = KVM_CPUID_FLAG_SIGNIFCANT_INDEX;
+                c->index = j;
+                cpu_x86_cpuid(env, i, j, &c->eax, &c->ebx, &c->ecx, &c->edx);
+
+                if (j > 1 && (c->eax & 0xf) != 1) {
+                    break;
+                }
+
+                if (cpuid_i == KVM_MAX_CPUID_ENTRIES) {
+                    fprintf(stderr, "cpuid_data is full, no space for "
+                                "cpuid(eax:0x12,ecx:0x%x)\n", j);
+                    abort();
+                }
+                c = &cpuid_data.entries[cpuid_i++];
+            }
+            break;
         default:
             c->function = i;
             c->flags = 0;
@@ -709,6 +728,12 @@ int kvm_arch_init_vcpu(CPUState *cs)
         has_msr_feature_control = !!(c->ecx & CPUID_EXT_VMX) ||
                                   !!(c->ecx & CPUID_EXT_SMX);
     }
+
+    c = cpuid_find_entry(&cpuid_data.cpuid, 7, 0);
+    if (c && (c->ebx & CPUID_7_0_EBX_SGX)) {
+        has_msr_feature_control = true;
+    }
+
 
     c = cpuid_find_entry(&cpuid_data.cpuid, 0x80000007, 0);
     if (c && (c->edx & 1<<8) && invtsc_mig_blocker == NULL) {
@@ -1188,7 +1213,8 @@ static int kvm_put_msrs(X86CPU *cpu, int level)
     CPUX86State *env = &cpu->env;
     struct {
         struct kvm_msrs info;
-        struct kvm_msr_entry entries[150];
+        //struct kvm_msr_entry entries[150];
+        struct kvm_msr_entry entries[150+16];
     } msr_data;
     struct kvm_msr_entry *msrs = msr_data.entries;
     int n = 0, i;
@@ -1313,6 +1339,17 @@ static int kvm_put_msrs(X86CPU *cpu, int level)
                 kvm_msr_entry_set(&msrs[n++],
                                   MSR_MTRRphysMask(i), env->mtrr_var[i].mask);
             }
+        }
+        //todo has_msr_sgx
+        if (env->features[FEAT_7_0_ECX] & CPUID_7_0_ECX_SGX_LC) {
+            kvm_msr_entry_set(&msrs[n++], MSR_IA32_SGXLEPUBKEYHASH0,
+                              env->msr_ia32_sgxlepubkeyhash[0]);
+            kvm_msr_entry_set(&msrs[n++], MSR_IA32_SGXLEPUBKEYHASH1,
+                              env->msr_ia32_sgxlepubkeyhash[1]);
+            kvm_msr_entry_set(&msrs[n++], MSR_IA32_SGXLEPUBKEYHASH2,
+                              env->msr_ia32_sgxlepubkeyhash[2]);
+            kvm_msr_entry_set(&msrs[n++], MSR_IA32_SGXLEPUBKEYHASH3,
+                              env->msr_ia32_sgxlepubkeyhash[3]);
         }
 
         /* Note: MSR_IA32_FEATURE_CONTROL is written separately, see
@@ -1627,6 +1664,11 @@ static int kvm_get_msrs(X86CPU *cpu)
         }
     }
 
+    msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH0;
+    msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH1;
+    msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH2;
+    msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH3;
+
     msr_data.info.nmsrs = n;
     ret = kvm_vcpu_ioctl(CPU(cpu), KVM_GET_MSRS, &msr_data);
     if (ret < 0) {
@@ -1781,6 +1823,9 @@ static int kvm_get_msrs(X86CPU *cpu)
             break;
         case MSR_MTRRfix4K_F8000:
             env->mtrr_fixed[10] = msrs[i].data;
+            break;
+        case MSR_IA32_SGXLEPUBKEYHASH0 ... MSR_IA32_SGXLEPUBKEYHASH3:
+            env->msr_ia32_sgxlepubkeyhash[index - MSR_IA32_SGXLEPUBKEYHASH0] = msrs[i].data;
             break;
         case MSR_MTRRphysBase(0) ... MSR_MTRRphysMask(MSR_MTRRcap_VCNT - 1):
             if (index & 1) {
@@ -2457,6 +2502,31 @@ void kvm_arch_update_guest_debug(CPUState *cpu, struct kvm_guest_debug *dbg)
                 ((uint32_t)len_code[hw_breakpoint[n].len] << (18 + n*4));
         }
     }
+}
+
+static bool has_sgx_provisioning;
+
+static bool __kvm_enable_sgx_provisioning(KVMState *s)
+{
+    int fd, ret;
+
+    fd = open("/dev/sgx/provision", O_RDONLY);
+    if (fd < 0) {
+        return false;
+    }
+
+    ret = kvm_vm_enable_cap(s, KVM_CAP_SGX_ATTRIBUTE, 0, fd);
+    if (ret) {
+        error_report("Could not enable SGX PROVISIONKEY: %s", strerror(-ret));
+        exit(1);
+    }
+    close(fd);
+    return true;
+}
+
+bool kvm_enable_sgx_provisioning(KVMState *s)
+{
+    return MEMORIZE(__kvm_enable_sgx_provisioning(s), has_sgx_provisioning);
 }
 
 static bool host_supports_vmx(void)
