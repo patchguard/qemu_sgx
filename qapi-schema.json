@@ -3377,7 +3377,7 @@
 #
 # Since: TBD
 ##
-{ 'struct': 'SGXEPCDeviceInfo',
+{ 'type': 'SGXEPCDeviceInfo',
   'data': { '*id': 'str',
             'addr': 'int',
             'size': 'int',
@@ -3394,6 +3394,7 @@
 # Since: 2.1
 ##
 { 'union': 'MemoryDeviceInfo', 'data': {'dimm': 'PCDIMMDeviceInfo','sgx-epc': 'SGXEPCDeviceInfo'} }
+#{ 'union': 'MemoryDeviceInfoTest', 'data': {'dimm': 'PCDIMMDeviceInfo','sgx-epc': 'SGXEPCDeviceInfo'} }
 
 ##
 # @query-memory-devices

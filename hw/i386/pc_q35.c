@@ -129,7 +129,7 @@ static void pc_q35_init(MachineState *machine)
         fprintf(stderr, "xen hardware virtual machine initialisation failed\n");
         exit(1);
     } else {
-        pc_machine_init_sgx_epc(pcms);
+        pc_machine_init_sgx_epc(machine,above_4g_mem_size);
      }
 
     icc_bridge = qdev_create(NULL, TYPE_ICC_BRIDGE);

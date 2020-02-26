@@ -24,6 +24,7 @@
 
 #include "exec/memory-internal.h"
 #include "exec/ram_addr.h"
+#include "exec/cpu-all.h"
 #include "sysemu/sysemu.h"
 
 //#define DEBUG_UNASSIGNED
@@ -1186,6 +1187,26 @@ void memory_region_init_ram_from_file(MemoryRegion *mr,
     mr->terminates = true;
     mr->destructor = memory_region_destructor_ram;
     mr->ram_addr = qemu_ram_alloc_from_file(size, mr, share, path, errp);
+}
+#define RAM_SHARED     (1 << 1)
+
+void memory_region_init_ram_from_fd(MemoryRegion *mr,
+                                    struct Object *owner,
+                                    const char *name,
+                                    uint64_t size,
+                                    bool share,
+                                    int fd,
+                                    Error **errp)
+{
+
+    Error *err = NULL;
+    memory_region_init(mr, owner, name, size);
+    mr->ram = true;
+    mr->terminates = true;
+    mr->destructor = memory_region_destructor_ram;
+    mr->ram_addr = qemu_ram_alloc_from_fd(size, mr,
+                                           share ? RAM_SHARED : 0,
+                                           fd, &err);
 }
 #endif
 

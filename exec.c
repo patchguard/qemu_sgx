@@ -75,6 +75,9 @@ static MemoryRegion io_mem_unassigned;
 /* RAM is mmap-ed with MAP_SHARED */
 #define RAM_SHARED     (1 << 1)
 
+/* RAM is a persistent kind memory */
+#define RAM_PMEM (1 << 5)
+
 #endif
 
 struct CPUTailQ cpus = QTAILQ_HEAD_INITIALIZER(cpus);
@@ -1051,6 +1054,91 @@ static long gethugepagesize(const char *path)
     return fs.f_bsize;
 }
 
+static void *fd_ram_alloc(RAMBlock *block,
+                            ram_addr_t memory,
+                            int fd,
+                            Error **errp)
+{
+    char *filename;
+    char *sanitized_name;
+    char *c;
+    void *area;
+    //int fd;
+    unsigned long hpagesize;
+
+    hpagesize = gethugepagesize(path);
+    if (!hpagesize) {
+        goto error;
+    }
+
+    if (memory < hpagesize) {
+        return NULL;
+    }
+
+    if (kvm_enabled() && !kvm_has_sync_mmu()) {
+        error_setg(errp,
+                   "host lacks kvm mmu notifiers, -mem-path unsupported");
+        goto error;
+    }
+
+    /* Make name safe to use with mkstemp by replacing '/' with '_'. */
+    sanitized_name = g_strdup(block->mr->name);
+    for (c = sanitized_name; *c != '\0'; c++) {
+        if (*c == '/')
+            *c = '_';
+    }
+
+    filename = g_strdup_printf("%s/qemu_back_mem.%s.XXXXXX", path,
+                               sanitized_name);
+    g_free(sanitized_name);
+
+    //fd = mkstemp(filename);
+    if (fd < 0) {
+        error_setg_errno(errp, errno,
+                         "unable to create backing store for hugepages");
+        g_free(filename);
+        goto error;
+    }
+    unlink(filename);
+    g_free(filename);
+
+    memory = (memory+hpagesize-1) & ~(hpagesize-1);
+
+    /*
+     * ftruncate is not supported by hugetlbfs in older
+     * hosts, so don't bother bailing out on errors.
+     * If anything goes wrong with it under other filesystems,
+     * mmap will fail.
+     */
+    if (ftruncate(fd, memory)) {
+        perror("ftruncate");
+    }
+
+    area = mmap(0, memory, PROT_READ | PROT_WRITE,
+                (block->flags & RAM_SHARED ? MAP_SHARED : MAP_PRIVATE),
+                fd, 0);
+    if (area == MAP_FAILED) {
+        error_setg_errno(errp, errno,
+                         "unable to map backing store for hugepages");
+        close(fd);
+        goto error;
+    }
+
+    if (mem_prealloc) {
+        os_mem_prealloc(fd, area, memory);
+    }
+
+    block->fd = fd;
+    return area;
+
+error:
+    if (mem_prealloc) {
+        error_report("%s\n", error_get_pretty(*errp));
+        exit(1);
+    }
+    return NULL;
+}
+
 static void *file_ram_alloc(RAMBlock *block,
                             ram_addr_t memory,
                             const char *path,
@@ -1324,7 +1412,115 @@ static ram_addr_t ram_block_add(RAMBlock *new_block)
     return new_block->offset;
 }
 
+
 #ifdef __linux__
+
+
+static void *file_ram_alloc_from_fd(RAMBlock *block,
+                            ram_addr_t memory,
+                            int fd,
+                            bool truncate,
+                            Error **errp)
+{
+    void *area;
+
+    block->page_size = qemu_fd_getpagesize(fd);
+    if (block->mr->align % block->page_size) {
+        error_setg(errp, "alignment 0x%" PRIx64
+                   " must be multiples of page size 0x%zx",
+                   block->mr->align, block->page_size);
+        return NULL;
+    } else if (block->mr->align && !is_power_of_2(block->mr->align)) {
+        error_setg(errp, "alignment 0x%" PRIx64
+                   " must be a power of two", block->mr->align);
+        return NULL;
+    }
+    block->mr->align = MAX(block->page_size, block->mr->align);
+#if defined(__s390x__)
+    if (kvm_enabled()) {
+        block->mr->align = MAX(block->mr->align, QEMU_VMALLOC_ALIGN);
+    }
+#endif
+
+    if (memory < block->page_size) {
+        error_setg(errp, "memory size 0x" RAM_ADDR_FMT " must be equal to "
+                   "or larger than page size 0x%zx",
+                   memory, block->page_size);
+        return NULL;
+    }
+
+    memory = ROUND_UP(memory, block->page_size);
+
+    /*
+     * ftruncate is not supported by hugetlbfs in older
+     * hosts, so don't bother bailing out on errors.
+     * If anything goes wrong with it under other filesystems,
+     * mmap will fail.
+     *
+     * Do not truncate the non-empty backend file to avoid corrupting
+     * the existing data in the file. Disabling shrinking is not
+     * enough. For example, the current vNVDIMM implementation stores
+     * the guest NVDIMM labels at the end of the backend file. If the
+     * backend file is later extended, QEMU will not be able to find
+     * those labels. Therefore, extending the non-empty backend file
+     * is disabled as well.
+     */
+    if (truncate && ftruncate(fd, memory)) {
+        perror("ftruncate");
+    }
+
+    area = qemu_ram_mmap(fd, memory, block->mr->align,
+                         block->flags & RAM_SHARED, block->flags & RAM_PMEM);
+    if (area == MAP_FAILED) {
+        error_setg_errno(errp, errno,
+                         "unable to map backing store for guest RAM");
+        return NULL;
+    }
+
+    block->fd = fd;
+    return area;
+}
+
+ram_addr_t *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
+                                 uint32_t ram_flags, int fd,
+                                 Error **errp)
+{
+
+   RAMBlock *new_block;
+
+    if (xen_enabled()) {
+        error_setg(errp, "-mem-path not supported with Xen");
+        return -1;
+    }
+
+    if (phys_mem_alloc != qemu_anon_ram_alloc) {
+        /*
+         * file_ram_alloc() needs to allocate just like
+         * phys_mem_alloc, but we haven't bothered to provide
+         * a hook there.
+         */
+        error_setg(errp,
+                   "-mem-path not supported with this accelerator");
+        return -1;
+    }
+
+    size = TARGET_PAGE_ALIGN(size);
+    new_block = g_malloc0(sizeof(*new_block));
+    new_block->mr = mr;
+    new_block->length = size;
+    new_block->flags = ram_flags ? RAM_SHARED : 0;
+    new_block->host = fd_ram_alloc(new_block, size,
+                                     fd, errp);
+    if (!new_block->host) {
+        g_free(new_block);
+        return -1;
+    }
+
+    return ram_block_add(new_block);
+
+}
+
+
 ram_addr_t qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
                                     bool share, const char *mem_path,
                                     Error **errp)

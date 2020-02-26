@@ -302,6 +302,8 @@ typedef struct RAMBlock {
     uint8_t *host;
     ram_addr_t offset;
     ram_addr_t length;
+    ram_addr_t used_length;
+    ram_addr_t max_length;
     uint32_t flags;
     char idstr[256];
     /* Reads can take either the iothread or the ramlist lock.
@@ -309,6 +311,7 @@ typedef struct RAMBlock {
      */
     QTAILQ_ENTRY(RAMBlock) next;
     int fd;
+    size_t page_size;
 } RAMBlock;
 
 typedef struct RAMList {

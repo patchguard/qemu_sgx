@@ -55,7 +55,7 @@ struct HostMemoryBackend {
     /* protected */
     uint64_t size;
     bool merge, dump;
-    bool prealloc, force_prealloc;
+    bool prealloc, force_prealloc,share;;
     DECLARE_BITMAP(host_nodes, MAX_NODES + 1);
     HostMemPolicy policy;
 

@@ -1252,14 +1252,12 @@ FWCfgState *pc_memory_init(MachineState *machine,
         exit(EXIT_FAILURE);
     }
 
-    /* always allocate the device memory information */
-    machine->device_memory = g_malloc0(sizeof(*machine->device_memory));
  
     if (sgx_epc_above_4g(pcms->sgx_epc)) {
         pcms->hotplug_memory_base = sgx_epc_above_4g_end(pcms->sgx_epc);
     } else {
         pcms->hotplug_memory_base =
-            0x100000000ULL + pcms->above_4g_mem_size;
+            0x100000000ULL + above_4g_mem_size;
     }
 
     /* initialize hotplug memory address space */

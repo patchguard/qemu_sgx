@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include "qemu-common.h"
 #include "exec/cpu-common.h"
+//#include "exec/cpu-all.h"
 #ifndef CONFIG_USER_ONLY
 #include "exec/hwaddr.h"
 #endif
@@ -144,7 +145,9 @@ struct MemoryRegion {
     MemoryRegion *container;
     Int128 size;
     hwaddr addr;
+    //RAMBlock *ram_block;
     void (*destructor)(MemoryRegion *mr);
+    uint64_t align;
     ram_addr_t ram_addr;
     bool subpage;
     bool terminates;
