@@ -386,6 +386,19 @@ static void object_property_del_child(Object *obj, Object *child, Error **errp)
     }
 }
 
+/**
+ * qobject_decref(): Decrement QObject's reference count, deallocate
+ * when it reaches zero
+ */
+static inline void qobject_decref1(QObject *obj)
+{
+    if (obj && --obj->refcnt == 0) {
+        assert(obj->type != NULL);
+        assert(obj->type->destroy != NULL);
+        obj->type->destroy(obj);
+    }
+}
+
 void object_unparent(Object *obj)
 {
     if (!obj->parent) {
@@ -400,7 +413,12 @@ void object_unparent(Object *obj)
         object_property_del_child(obj->parent, obj, NULL);
         obj->parent = NULL;
     }
-    object_unref(obj);
+    //QDECREF(obj);
+    qobject_decref(obj);
+
+
+
+
 }
 
 static void object_deinit(Object *obj, TypeImpl *type)
@@ -1509,7 +1527,7 @@ void object_property_set_uint(Object *obj, uint64_t value,
     QNum *qnum = qnum_from_uint(value);
 
     object_property_set_qobject(obj, QOBJECT(qnum), name, errp);
-    qobject_unref(qnum);
+    qobject_decref(qnum);
 }
 
 static char *qdev_get_type(Object *obj, Error **errp)

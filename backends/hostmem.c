@@ -17,6 +17,12 @@
 #include "qemu/config-file.h"
 #include "qom/object_interfaces.h"
 
+#include <sys/vfs.h>
+
+extern size_t qemu_real_host_page_size;
+
+#define HUGETLBFS_MAGIC       0x958458f6
+
 #ifdef CONFIG_NUMA
 #include <numaif.h>
 QEMU_BUILD_BUG_ON(HOST_MEM_POLICY_DEFAULT != MPOL_DEFAULT);
@@ -42,6 +48,37 @@ void host_memory_backend_set_mapped(HostMemoryBackend *backend, bool mapped)
 bool host_memory_backend_is_mapped(HostMemoryBackend *backend)
 {
     return backend->is_mapped;
+}
+
+size_t qemu_mempath_getpagesize(const char *mem_path)
+{
+#ifdef CONFIG_LINUX
+    struct statfs fs;
+    int ret;
+
+    if (mem_path) {
+        do {
+            ret = statfs(mem_path, &fs);
+        } while (ret != 0 && errno == EINTR);
+
+        if (ret != 0) {
+            fprintf(stderr, "Couldn't statfs() memory path: %s\n",
+                    strerror(errno));
+            exit(1);
+        }
+
+        if (fs.f_type == HUGETLBFS_MAGIC) {
+            /* It's hugepage, return the huge page size */
+            return fs.f_bsize;
+        }
+    }
+#ifdef __sparc__
+    /* SPARC Linux needs greater alignment than the pagesize */
+    return QEMU_VMALLOC_ALIGN;
+#endif
+#endif
+
+    return qemu_real_host_page_size;
 }
 
 #ifdef __linux__

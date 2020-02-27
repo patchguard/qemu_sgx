@@ -1773,6 +1773,11 @@ void memory_region_set_alias_offset(MemoryRegion *mr, hwaddr offset)
     memory_region_transaction_commit();
 }
 
+uint64_t memory_region_get_alignment(const MemoryRegion *mr)
+{
+    return mr->align;
+}
+
 ram_addr_t memory_region_get_ram_addr(MemoryRegion *mr)
 {
     return mr->ram_addr;

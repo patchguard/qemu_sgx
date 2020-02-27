@@ -5,6 +5,8 @@
 #include <qemu/typedefs.h>
 #include "qemu/queue.h"
 
+#define range_empty ((Range){ .begin = 1, .end = 0 })
+
 /*
  * Operations on 64 bit address ranges.
  * Notes:
@@ -17,6 +19,109 @@ struct Range {
     uint64_t begin; /* First byte of the range, or 0 if empty. */
     uint64_t end;   /* 1 + the last byte. 0 if range empty or ends at ~0x0LL. */
 };
+
+static inline void range_invariant(const Range *range)
+{
+    assert(range->begin <= range->end || range->begin == range->end + 1);
+}
+
+
+
+/* Is @range empty? */
+static inline bool range_is_empty(const Range *range)
+{
+    range_invariant(range);
+    return range->begin > range->end;
+}
+
+
+/* Initialize @range to the empty range */
+static inline void range_make_empty(Range *range)
+{
+    *range = range_empty;
+    assert(range_is_empty(range));
+}
+
+
+/* Return @range's upper bound.  @range must not be empty. */
+static inline uint64_t range_upb(Range *range)
+{
+    assert(!range_is_empty(range));
+    return range->end;
+}
+
+/*
+ * Check if @range1 overlaps with @range2. If one of the ranges is empty,
+ * the result is always "false".
+ */
+static inline bool range_overlaps_range(const Range *range1,
+                                        const Range *range2)
+{
+    if (range_is_empty(range1) || range_is_empty(range2)) {
+        return false;
+    }
+    return !(range2->end < range1->begin || range1->end < range2->begin);
+}
+
+
+
+
+/*
+ * Get the size of @range.
+ */
+static inline uint64_t range_size(const Range *range)
+{
+    return range->end - range->begin + 1;
+}
+
+/*
+ * Check if @range1 contains @range2. If one of the ranges is empty,
+ * the result is always "false".
+ */
+static inline bool range_contains_range(const Range *range1,
+                                        const Range *range2)
+{
+    if (range_is_empty(range1) || range_is_empty(range2)) {
+        return false;
+    }
+    return range1->begin <= range2->begin && range1->end >= range2->end;
+}
+
+/*
+ * Initialize @range to span the interval [@lob,@lob + @size - 1].
+ * @size may be 0. If the range would overflow, returns -ERANGE, otherwise
+ * 0.
+ */
+static inline int QEMU_WARN_UNUSED_RESULT range_init(Range *range, uint64_t lob,
+                                                     uint64_t size)
+{
+    if (lob + size < lob) {
+        return -ERANGE;
+    }
+    range->begin = lob;
+    range->end = lob + size - 1;
+    range_invariant(range);
+    return 0;
+}
+
+
+/* Return @range's lower bound.  @range must not be empty. */
+static inline uint64_t range_lob(Range *range)
+{
+    assert(!range_is_empty(range));
+    return range->begin;
+}
+
+/*
+ * Initialize @range to span the interval [@lob,@lob + @size - 1].
+ * @size may be 0. Range must not overflow.
+ */
+static inline void range_init_nofail(Range *range, uint64_t begin, uint64_t size)
+{
+    range->begin = begin;
+    range->end = begin + size - 1;
+    range_invariant(range);
+}
 
 static inline void range_extend(Range *range, Range *extend_by)
 {

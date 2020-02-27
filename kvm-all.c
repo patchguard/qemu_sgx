@@ -128,6 +128,22 @@ static const KVMCapabilityInfo kvm_required_capabilites[] = {
     KVM_CAP_LAST_INFO
 };
 
+
+bool kvm_has_free_slot(MachineState *ms)
+{
+    KVMState *s = kvm_state;
+    int i;
+
+    for (i = 0; i < s->nr_slots; i++) {
+        if (s->slots[i].memory_size == 0) {
+            return &s->slots[i];
+        }
+    }
+
+
+    return NULL;
+}
+
 static KVMSlot *kvm_alloc_slot(KVMState *s)
 {
     int i;

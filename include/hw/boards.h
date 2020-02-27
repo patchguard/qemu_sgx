@@ -104,6 +104,18 @@ struct MachineClass {
                                            DeviceState *dev);
 };
 
+
+/**
+ * DeviceMemoryState:
+ * @base: address in guest physical address space where the memory
+ * address space for memory devices starts
+ * @mr: address space container for memory devices
+ */
+typedef struct DeviceMemoryState {
+    hwaddr base;
+    MemoryRegion mr;
+} DeviceMemoryState;
+
 /**
  * MachineState:
  */
@@ -123,6 +135,8 @@ struct MachineState {
     bool mem_merge;
     bool usb;
     char *firmware;
+
+    DeviceMemoryState *device_memory;
 
     ram_addr_t ram_size;
     ram_addr_t maxram_size;

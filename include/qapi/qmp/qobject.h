@@ -44,6 +44,7 @@ typedef enum {
     QTYPE_QFLOAT,
     QTYPE_QBOOL,
     QTYPE_QERROR,
+    QTYPE_QNUM,
     QTYPE_MAX,
 } qtype_code;
 
@@ -78,6 +79,13 @@ typedef struct QObject {
 #define QOBJECT_INIT(obj, qtype_type)   \
     obj->base.refcnt = 1;               \
     obj->base.type   = qtype_type
+
+/**
+ * qobject_unref(): Decrement QObject's reference count, deallocate
+ * when it reaches zero
+ */
+#define qobject_unref(obj) qobject_unref_impl(QOBJECT(obj))
+
 
 /**
  * qobject_incref(): Increment QObject's reference count

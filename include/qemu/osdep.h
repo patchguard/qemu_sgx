@@ -48,6 +48,9 @@ typedef signed int              int_fast16_t;
         (type *) ((char *) __mptr - offsetof(type, member));})
 #endif
 
+/* Check if n is a multiple of m */
+#define QEMU_IS_ALIGNED(n, m) (((n) % (m)) == 0)
+
 /* Convert from a base type to a parent type, with compile time checking.  */
 #ifdef __GNUC__
 #define DO_UPCAST(type, field, dev) ( __extension__ ( { \

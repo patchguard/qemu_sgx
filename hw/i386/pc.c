@@ -1242,6 +1242,9 @@ FWCfgState *pc_memory_init(MachineState *machine,
         e820_add_entry(pcms->sgx_epc->base, pcms->sgx_epc->size, E820_RESERVED);
     }
 
+ /* always allocate the device memory information */
+    machine->device_memory = g_malloc0(sizeof(*machine->device_memory));
+
     if (!guest_info->has_reserved_memory &&
         (machine->ram_slots ||
          (machine->maxram_size > machine->ram_size))) {
