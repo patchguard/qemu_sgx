@@ -564,6 +564,9 @@ int memory_region_get_fd(MemoryRegion *mr);
  */
 void *memory_region_get_ram_ptr(MemoryRegion *mr);
 
+
+void memory_region_set_size(MemoryRegion *mr, uint64_t size);
+
 /**
  * memory_region_set_log: Turn dirty logging on or off for a region.
  *

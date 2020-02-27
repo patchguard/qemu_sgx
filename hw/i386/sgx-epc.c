@@ -27,7 +27,7 @@
 static Property sgx_epc_properties[] = {
     DEFINE_PROP_UINT64("addr", SGXEPCDevice, addr, 0),
 //todosgx    DEFINE_PROP_LINK("memdev", SGXEPCDevice, hostmem,
-//                     TYPE_MEMORY_BACKEND, HostMemoryBackend *),
+//                    TYPE_MEMORY_BACKEND, HostMemoryBackend *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -182,9 +182,7 @@ int sgx_epc_get_section(int section_nr, uint64_t *addr, uint64_t *size)
     epc = pcms->sgx_epc->sections[section_nr];
 
     *addr = epc->addr;
-#if 0 //todosgx
     *size = memory_device_get_region_size(MEMORY_DEVICE(epc), &error_fatal);
-#endif
     return 0;
 }
 
@@ -209,7 +207,7 @@ static int sgx_epc_init_func(void *opaque, QemuOpts *opts, Error **errp)
 
     obj = object_new("sgx-epc");
 
-//todosgx    qdev_set_id(DEVICE(obj), qemu_opts_id(opts));
+    qdev_set_id(DEVICE(obj), qemu_opts_id(opts));
 
     if (qemu_opt_foreach(opts, sgx_epc_set_property, obj, &err)) {
         goto out;
@@ -251,7 +249,7 @@ void pc_machine_init_sgx_epc(PCMachineState *pcms,ram_addr_t above_4g_mem_size)
         exit(EXIT_FAILURE);
     }
 
-//todosgx    memory_region_set_size(&sgx_epc->mr, sgx_epc->size);
+    memory_region_set_size(&sgx_epc->mr, sgx_epc->size);
 }
 
 static QemuOptsList sgx_epc_opts = {

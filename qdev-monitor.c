@@ -274,6 +274,24 @@ static void qbus_list_dev(BusState *bus)
     error_printf("\n");
 }
 
+void qdev_set_id(DeviceState *dev, const char *id)
+{
+    if (id) {
+        dev->id = id;
+    }
+
+    if (dev->id) {
+        object_property_add_child(qdev_get_peripheral(), dev->id,
+                                  OBJECT(dev), NULL);
+    } else {
+        static int anon_count;
+        gchar *name = g_strdup_printf("device[%d]", anon_count++);
+        object_property_add_child(qdev_get_peripheral_anon(), name,
+                                  OBJECT(dev), NULL);
+        g_free(name);
+    }
+}
+
 static BusState *qbus_find_bus(DeviceState *dev, char *elem)
 {
     BusState *child;
