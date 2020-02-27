@@ -99,5 +99,6 @@ void error_free(Error *err);
  */
 
 extern Error *error_abort;
+extern Error *error_fatal;
 
 #endif

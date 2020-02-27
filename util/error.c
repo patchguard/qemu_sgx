@@ -21,6 +21,7 @@ struct Error
 };
 
 Error *error_abort;
+Error *error_fatal;
 
 void error_set(Error **errp, ErrorClass err_class, const char *fmt, ...)
 {

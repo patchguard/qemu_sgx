@@ -939,6 +939,16 @@ void object_property_set_int(Object *obj, int64_t value,
  */
 int64_t object_property_get_int(Object *obj, const char *name,
                                 Error **errp);
+/**
+ * object_property_set_uint:
+ * @value: the value to be written to the property
+ * @name: the name of the property
+ * @errp: returns an error if this function fails
+ *
+ * Writes an unsigned integer value to a property.
+ */
+void object_property_set_uint(Object *obj, uint64_t value,
+                              const char *name, Error **errp);
 
 /**
  * object_property_get_enum:

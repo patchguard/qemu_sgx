@@ -25,6 +25,7 @@
 #include "qapi/qmp/qobject.h"
 #include "qapi/qmp/qbool.h"
 #include "qapi/qmp/qint.h"
+#include "qapi/qmp/qnum.h"
 #include "qapi/qmp/qstring.h"
 
 #define MAX_INTERFACES 32
@@ -1500,6 +1501,15 @@ void object_property_add_bool(Object *obj, const char *name,
         error_propagate(errp, local_err);
         g_free(prop);
     }
+}
+
+void object_property_set_uint(Object *obj, uint64_t value,
+                              const char *name, Error **errp)
+{
+    QNum *qnum = qnum_from_uint(value);
+
+    object_property_set_qobject(obj, QOBJECT(qnum), name, errp);
+    qobject_unref(qnum);
 }
 
 static char *qdev_get_type(Object *obj, Error **errp)

@@ -25,6 +25,42 @@ QEMU_BUILD_BUG_ON(HOST_MEM_POLICY_BIND != MPOL_BIND);
 QEMU_BUILD_BUG_ON(HOST_MEM_POLICY_INTERLEAVE != MPOL_INTERLEAVE);
 #endif
 
+bool host_memory_backend_mr_inited(HostMemoryBackend *backend)
+{
+    /*
+     * NOTE: We forbid zero-length memory backend, so here zero means
+     * "we haven't inited the backend memory region yet".
+     */
+    return memory_region_size(&backend->mr) != 0;
+}
+
+void host_memory_backend_set_mapped(HostMemoryBackend *backend, bool mapped)
+{
+    backend->is_mapped = mapped;
+}
+
+bool host_memory_backend_is_mapped(HostMemoryBackend *backend)
+{
+    return backend->is_mapped;
+}
+
+#ifdef __linux__
+size_t host_memory_backend_pagesize(HostMemoryBackend *memdev)
+{
+    Object *obj = OBJECT(memdev);
+    char *path = object_property_get_str(obj, "mem-path", NULL);
+    size_t pagesize = qemu_mempath_getpagesize(path);
+
+    g_free(path);
+    return pagesize;
+}
+#else
+size_t host_memory_backend_pagesize(HostMemoryBackend *memdev)
+{
+    return qemu_real_host_page_size;
+}
+#endif
+
 static void
 host_memory_backend_get_size(Object *obj, Visitor *v, void *opaque,
                              const char *name, Error **errp)

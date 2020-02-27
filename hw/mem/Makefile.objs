@@ -1,1 +1,2 @@
 common-obj-$(CONFIG_MEM_HOTPLUG) += pc-dimm.o
+common-obj-y += memory-device.o

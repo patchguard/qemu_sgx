@@ -38,6 +38,7 @@ struct PCMachineState {
     HotplugHandler *acpi_dev;
 
     uint64_t max_ram_below_4g;
+    uint16_t boot_cpus;
     struct SGXEPCState *sgx_epc;
 };
 
