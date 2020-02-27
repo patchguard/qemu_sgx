@@ -223,6 +223,7 @@
 #define CR4_OSXSAVE_MASK (1U << 18)
 #define CR4_SMEP_MASK   (1U << 20)
 #define CR4_SMAP_MASK   (1U << 21)
+#define CR4_PKE_MASK   (1U << 22)
 
 #define DR6_BD          (1 << 13)
 #define DR6_BS          (1 << 14)
@@ -409,12 +410,37 @@
 #define XSTATE_BNDCSR                   (1ULL << 4)
 
 
+#define XSTATE_FP_BIT                   0
+#define XSTATE_SSE_BIT                  1
+#define XSTATE_YMM_BIT                  2
+#define XSTATE_BNDREGS_BIT              3
+#define XSTATE_BNDCSR_BIT               4
+#define XSTATE_OPMASK_BIT               5
+#define XSTATE_ZMM_Hi256_BIT            6
+#define XSTATE_Hi16_ZMM_BIT             7
+#define XSTATE_PKRU_BIT                 9
+
+#define XSTATE_FP_MASK                  (1ULL << XSTATE_FP_BIT)
+#define XSTATE_SSE_MASK                 (1ULL << XSTATE_SSE_BIT)
+#define XSTATE_YMM_MASK                 (1ULL << XSTATE_YMM_BIT)
+#define XSTATE_BNDREGS_MASK             (1ULL << XSTATE_BNDREGS_BIT)
+#define XSTATE_BNDCSR_MASK              (1ULL << XSTATE_BNDCSR_BIT)
+#define XSTATE_OPMASK_MASK              (1ULL << XSTATE_OPMASK_BIT)
+#define XSTATE_ZMM_Hi256_MASK           (1ULL << XSTATE_ZMM_Hi256_BIT)
+#define XSTATE_Hi16_ZMM_MASK            (1ULL << XSTATE_Hi16_ZMM_BIT)
+#define XSTATE_PKRU_MASK                (1ULL << XSTATE_PKRU_BIT)
+
+
+
 /* CPUID feature words */
 typedef enum FeatureWord {
     FEAT_1_EDX,         /* CPUID[1].EDX */
     FEAT_1_ECX,         /* CPUID[1].ECX */
     FEAT_7_0_EBX,       /* CPUID[EAX=7,ECX=0].EBX */
     FEAT_7_0_ECX,       /* CPUID[EAX=7,ECX=0].ECX */
+    FEAT_7_0_EDX,       /* CPUID[EAX=7,ECX=0].EDX */
+    FEAT_7_1_EAX,       /* CPUID[EAX=7,ECX=1].EAX */
+
     FEAT_SGX_12_0_EAX,   /* CPUID[EAX=12,ECX=0].EAX */
     FEAT_SGX_12_1_EAX,  /* CPUID[EAX=0x12,ECX=1].EAX (SGX ATTRIBUTES[31:0]) */
     FEAT_SGX_12_1_EBX,  /* CPUID[EAX=0x12,ECX=1].EBX (SGX MISCSELECT[31:0]) */
@@ -424,6 +450,10 @@ typedef enum FeatureWord {
     FEAT_C000_0001_EDX, /* CPUID[C000_0001].EDX */
     FEAT_KVM,           /* CPUID[4000_0001].EAX (KVM_CPUID_FEATURES) */
     FEAT_SVM,           /* CPUID[8000_000A].EDX */
+    FEAT_XSAVE,         /* CPUID[EAX=0xd,ECX=1].EAX */
+    FEAT_6_EAX,         /* CPUID[6].EAX */
+    FEAT_XSAVE_COMP_LO, /* CPUID[EAX=0xd,ECX=0].EAX */
+    FEAT_XSAVE_COMP_HI, /* CPUID[EAX=0xd,ECX=0].EDX */
     FEATURE_WORDS,
 } FeatureWord;
 
@@ -580,6 +610,35 @@ typedef uint32_t FeatureWordArray[FEATURE_WORDS];
 #define CPUID_7_0_EBX_RDSEED   (1U << 18)
 #define CPUID_7_0_EBX_ADX      (1U << 19)
 #define CPUID_7_0_EBX_SMAP     (1U << 20)
+
+/* AVX-512 Vector Byte Manipulation Instruction */
+#define CPUID_7_0_ECX_AVX512_VBMI       (1U << 1)
+/* User-Mode Instruction Prevention */
+#define CPUID_7_0_ECX_UMIP              (1U << 2)
+/* Protection Keys for User-mode Pages */
+#define CPUID_7_0_ECX_PKU               (1U << 3)
+/* OS Enable Protection Keys */
+#define CPUID_7_0_ECX_OSPKE             (1U << 4)
+/* UMONITOR/UMWAIT/TPAUSE Instructions */
+#define CPUID_7_0_ECX_WAITPKG           (1U << 5)
+/* Additional AVX-512 Vector Byte Manipulation Instruction */
+#define CPUID_7_0_ECX_AVX512_VBMI2      (1U << 6)
+/* Galois Field New Instructions */
+#define CPUID_7_0_ECX_GFNI              (1U << 8)
+/* Vector AES Instructions */
+#define CPUID_7_0_ECX_VAES              (1U << 9)
+/* Carry-Less Multiplication Quadword */
+#define CPUID_7_0_ECX_VPCLMULQDQ        (1U << 10)
+/* Vector Neural Network Instructions */
+#define CPUID_7_0_ECX_AVX512VNNI        (1U << 11)
+/* Support for VPOPCNT[B,W] and VPSHUFBITQMB */
+#define CPUID_7_0_ECX_AVX512BITALG      (1U << 12)
+/* POPCNT for vectors of DW/QW */
+#define CPUID_7_0_ECX_AVX512_VPOPCNTDQ  (1U << 14)
+/* 5-level Page Tables */
+#define CPUID_7_0_ECX_LA57              (1U << 16)
+/* Read Processor ID */
+#define CPUID_7_0_ECX_RDPID             (1U << 22)
 
 #define CPUID_7_0_ECX_CLDEMOTE (1U << 25)  /* CLDEMOTE Instruction */
 #define CPUID_7_0_ECX_MOVDIRI  (1U << 27)  /* MOVDIRI Instruction */
@@ -941,6 +1000,16 @@ typedef struct CPUX86State {
     CPU_COMMON
 
     /* Fields from here on are preserved across CPU reset. */
+
+    /* processor features (e.g. for CPUID insn) */
+    /* Minimum cpuid leaf 7 value */
+    uint32_t cpuid_level_func7;
+    /* Actual cpuid leaf 7 value */
+    uint32_t cpuid_min_level_func7;
+    /* Minimum level/xlevel/xlevel2, based on CPU model + features */
+    uint32_t cpuid_min_level, cpuid_min_xlevel, cpuid_min_xlevel2;
+    /* Maximum level/xlevel/xlevel2 value for auto-assignment: */
+    uint32_t cpuid_max_level, cpuid_max_xlevel, cpuid_max_xlevel2;
 
     /* processor features (e.g. for CPUID insn) */
     uint32_t cpuid_level;

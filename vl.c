@@ -3376,7 +3376,7 @@ int main(int argc, char **argv, char **envp)
                 mem_prealloc = 1;
                 break;
             case QEMU_OPTION_sgx_epc:
-                opts = qemu_opts_parse_noisily(qemu_find_opts("sgx-epc"),
+                opts = qemu_opts_parse(qemu_find_opts("sgx-epc"),
                                                optarg, false);
                 if (!opts) {
                     exit(1);

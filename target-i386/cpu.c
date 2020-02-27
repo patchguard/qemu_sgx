@@ -307,7 +307,8 @@ static const char *cpuid_12_1_ebx_feature_name[] = {
             NULL, NULL, NULL, NULL,
             NULL, NULL, NULL, NULL,
             NULL, NULL, NULL, NULL,
-}
+};
+
 
 
 static const char *cpuid_apm_edx_feature_name[] = {
@@ -481,7 +482,7 @@ typedef struct X86RegisterInfo32 {
     /* Name of register */
     const char *name;
     /* QAPI enum value register */
-    cpuid_12_1_ebx_feature_name,X86CPURegister32 qapi_enum;
+    X86CPURegister32 qapi_enum;
 } X86RegisterInfo32;
 
 #define REGISTER(reg) \

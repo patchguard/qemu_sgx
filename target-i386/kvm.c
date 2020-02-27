@@ -2524,6 +2524,17 @@ static bool __kvm_enable_sgx_provisioning(KVMState *s)
     return true;
 }
 
+#define MEMORIZE(fn, _result) \
+    ({ \
+        static bool _memorized; \
+        \
+        if (_memorized) { \
+            return _result; \
+        } \
+        _memorized = true; \
+        _result = fn; \
+    })
+
 bool kvm_enable_sgx_provisioning(KVMState *s)
 {
     return MEMORIZE(__kvm_enable_sgx_provisioning(s), has_sgx_provisioning);

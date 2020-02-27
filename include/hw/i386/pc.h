@@ -8,7 +8,9 @@
 #include "hw/block/fdc.h"
 #include "net/net.h"
 #include "hw/i386/ioapic.h"
+
 #include "hw/i386/sgx-epc.h"
+
 
 #include "qemu/range.h"
 #include "qemu/bitmap.h"
@@ -36,7 +38,7 @@ struct PCMachineState {
     HotplugHandler *acpi_dev;
 
     uint64_t max_ram_below_4g;
-    SGXEPCState *sgx_epc;
+    struct SGXEPCState *sgx_epc;
 };
 
 #define PC_MACHINE_ACPI_DEVICE_PROP "acpi-device"

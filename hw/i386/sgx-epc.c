@@ -64,7 +64,7 @@ static void sgx_epc_get_size(Object *obj, Visitor *v, const char *name,
     Error *local_err = NULL;
     uint64_t value;
 
-    value = memory_device_get_region_size(MEMORY_DEVICE(obj), &local_err);
+//todosgx    value = memory_device_get_region_size(MEMORY_DEVICE(obj), &local_err);
     if (local_err) {
         error_propagate(errp, local_err);
         return;
@@ -97,7 +97,7 @@ static void sgx_epc_realize(DeviceState *dev, Error **errp)
     if (!epc->hostmem) {
         error_setg(errp, "'" SGX_EPC_MEMDEV_PROP "' property is not set");
         return;
-    } else if (host_memory_backend_is_mapped(epc->hostmem)) {
+//todosgx    } else if (host_memory_backend_is_mapped(epc->hostmem)) {
         char *path = object_get_canonical_path_component(OBJECT(epc->hostmem));
         error_setg(errp, "can't use already busy memdev: %s", path);
         g_free(path);
@@ -110,7 +110,7 @@ static void sgx_epc_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(&sgx_epc->mr, epc->addr - sgx_epc->base,
                                 host_memory_backend_get_memory(epc->hostmem,errp));
 
-    host_memory_backend_set_mapped(epc->hostmem, true);
+//todosgx    host_memory_backend_set_mapped(epc->hostmem, true);
 
     sgx_epc->sections = g_renew(SGXEPCDevice *, sgx_epc->sections,
                                 sgx_epc->nr_sections + 1);
@@ -123,7 +123,7 @@ static void sgx_epc_unrealize(DeviceState *dev, Error **errp)
 {
     SGXEPCDevice *epc = SGX_EPC(dev);
 
-    host_memory_backend_set_mapped(epc->hostmem, false);
+//todosgx    host_memory_backend_set_mapped(epc->hostmem, false);
 }
 #if 0 //todosgx
 static uint64_t sgx_epc_md_get_addr(const MemoryDeviceState *md)
@@ -256,7 +256,7 @@ static int sgx_epc_init_func(void *opaque, QemuOpts *opts, Error **errp)
 
     obj = object_new("sgx-epc");
 
-    qdev_set_id(DEVICE(obj), qemu_opts_id(opts));
+//todosgx    qdev_set_id(DEVICE(obj), qemu_opts_id(opts));
 
     if (qemu_opt_foreach(opts, sgx_epc_set_property, obj, &err)) {
         goto out;
@@ -298,7 +298,7 @@ void pc_machine_init_sgx_epc(PCMachineState *pcms,ram_addr_t above_4g_mem_size)
         exit(EXIT_FAILURE);
     }
 
-    memory_region_set_size(&sgx_epc->mr, sgx_epc->size);
+//todosgx    memory_region_set_size(&sgx_epc->mr, sgx_epc->size);
 }
 
 static QemuOptsList sgx_epc_opts = {
