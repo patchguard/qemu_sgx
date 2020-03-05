@@ -275,6 +275,18 @@ static const char *cpuid_7_0_ecx_feature_name[] = {
             "movdir64b", NULL, "sgxlc", NULL,
 };
 
+static const char *cpuid_7_0_edx_feature_name[] = {
+            NULL, NULL, "avx512-4vnniw", "avx512-4fmaps",
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, NULL, NULL,
+            NULL, NULL, "spec-ctrl", NULL,
+            NULL, NULL, NULL, NULL,
+};
+
+
 static const char *cpuid_12_0_eax_feature_name[] = {
             "sgx1", "sgx2", NULL, NULL,
             NULL, "sgx-enclv", "sgx-encls-c", NULL,
@@ -377,6 +389,7 @@ static const char *cpuid_apm_edx_feature_name[] = {
           CPUID_7_0_EBX_ERMS, CPUID_7_0_EBX_INVPCID, CPUID_7_0_EBX_RTM,
           CPUID_7_0_EBX_RDSEED */
 #define TCG_7_0_ECX_FEATURES 0
+#define TCG_7_0_EDX_FEATURES 0
 #define TCG_SGX_12_0_EAX_FEATURES 0
 #define TCG_SGX_12_1_EAX_FEATURES 0
 #define TCG_SGX_12_1_EBX_FEATURES 0
@@ -445,10 +458,17 @@ static FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
         .cpuid_reg = R_ECX,
         .tcg_features = TCG_7_0_ECX_FEATURES,
     },
+    [FEAT_7_0_EDX] = {
+        .feat_names = cpuid_7_0_edx_feature_name,
+        .cpuid_eax = 7,
+        .cpuid_needs_ecx = true, .cpuid_ecx = 0,
+        .cpuid_reg = R_EDX,
+        .tcg_features = TCG_7_0_EDX_FEATURES,
+    },
     [FEAT_SGX_12_0_EAX] = {
         .feat_names = cpuid_12_0_eax_feature_name,
         .cpuid_eax= 0x12,
-        .cpuid_needs_ecx = true, .cpuid_ecx = 1,
+        .cpuid_needs_ecx = true, .cpuid_ecx = 0,
         .cpuid_reg = R_EAX,
         .tcg_features = TCG_SGX_12_0_EAX_FEATURES,
     },
@@ -466,8 +486,6 @@ static FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
         .cpuid_reg = R_EBX,
         .tcg_features = TCG_SGX_12_1_EBX_FEATURES,
     },
-
-
 
     [FEAT_8000_0007_EDX] = {
         .feat_names = cpuid_apm_edx_feature_name,
@@ -564,8 +582,14 @@ static uint32_t x86_cpu_get_migratable_flags(FeatureWord w)
     uint32_t r = 0;
     int i;
 
+    //todofix for debugging
+    if(!wi->feat_names) return r;
+
+
     for (i = 0; i < 32; i++) {
         uint32_t f = 1U << i;
+
+
         /* If the feature name is unknown, it is not supported by QEMU yet */
         if (!wi->feat_names[i]) {
             continue;
@@ -2419,6 +2443,8 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
             *ecx = 0;
             *edx = 0;
         }
+
+        printf("cpuid(7):\teax=%p,ebx=%p,ecx=%p,edx=%p\n",*eax,*ebx,*ecx,*edx);
         break;
     case 9:
         /* Direct Cache Access Information Leaf */
@@ -2545,6 +2571,7 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
             }
         }
 #endif
+        printf("cpuid(12):\teax=%p,ebx=%p,ecx=%p,edx=%p\n",*eax,*ebx,*ecx,*edx);
         break;
     case 0x80000000:
         *eax = env->cpuid_xlevel;

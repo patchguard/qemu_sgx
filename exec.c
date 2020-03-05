@@ -795,7 +795,6 @@ static RAMBlock *qemu_get_ram_block(ram_addr_t addr)
             goto found;
         }
     }
-
     fprintf(stderr, "Bad ram offset %" PRIx64 "\n", (uint64_t)addr);
     abort();
 
