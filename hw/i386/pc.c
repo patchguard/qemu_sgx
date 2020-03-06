@@ -727,7 +727,7 @@ static FWCfgState *bochs_bios_init(void)
     return fw_cfg;
 }
 
-static long get_file_size(FILE *f)
+long get_file_size(FILE *f)
 {
     long where, size;
 

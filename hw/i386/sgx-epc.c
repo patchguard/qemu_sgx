@@ -270,7 +270,7 @@ static QemuOptsList sgx_epc_opts = {
     },
 };
 
-static void sgx_epc_register_opts(void)
+void sgx_epc_register_opts(void)
 {
     qemu_add_opts(&sgx_epc_opts);
 }

@@ -1053,175 +1053,164 @@ static long gethugepagesize(const char *path)
     return fs.f_bsize;
 }
 
-static void *fd_ram_alloc(RAMBlock *block,
-                            ram_addr_t memory,
-                            int fd,
-                            Error **errp)
+size_t qemu_fd_getpagesize(int fd)
 {
-    char *filename;
-    char *sanitized_name;
-    char *c;
-    void *area;
-    //int fd;
-    unsigned long hpagesize;
+#ifdef CONFIG_LINUX
+    struct statfs fs;
+    int ret;
 
-    hpagesize = gethugepagesize(path);
-    if (!hpagesize) {
-        goto error;
+    if (fd != -1) {
+        do {
+            ret = fstatfs(fd, &fs);
+        } while (ret != 0 && errno == EINTR);
+
+        if (ret == 0 && fs.f_type == HUGETLBFS_MAGIC) {
+            return fs.f_bsize;
+        }
     }
+#ifdef __sparc__
+    /* SPARC Linux needs greater alignment than the pagesize */
+    return QEMU_VMALLOC_ALIGN;
+#endif
+#endif
 
-    if (memory < hpagesize) {
-        return NULL;
-    }
-
-    if (kvm_enabled() && !kvm_has_sync_mmu()) {
-        error_setg(errp,
-                   "host lacks kvm mmu notifiers, -mem-path unsupported");
-        goto error;
-    }
-
-    /* Make name safe to use with mkstemp by replacing '/' with '_'. */
-    sanitized_name = g_strdup(block->mr->name);
-    for (c = sanitized_name; *c != '\0'; c++) {
-        if (*c == '/')
-            *c = '_';
-    }
-
-    filename = g_strdup_printf("%s/qemu_back_mem.%s.XXXXXX", path,
-                               sanitized_name);
-    g_free(sanitized_name);
-
-    //fd = mkstemp(filename);
-    if (fd < 0) {
-        error_setg_errno(errp, errno,
-                         "unable to create backing store for hugepages");
-        g_free(filename);
-        goto error;
-    }
-    unlink(filename);
-    g_free(filename);
-
-    memory = (memory+hpagesize-1) & ~(hpagesize-1);
-
-    /*
-     * ftruncate is not supported by hugetlbfs in older
-     * hosts, so don't bother bailing out on errors.
-     * If anything goes wrong with it under other filesystems,
-     * mmap will fail.
-     */
-    if (ftruncate(fd, memory)) {
-        perror("ftruncate");
-    }
-
-    area = mmap(0, memory, PROT_READ | PROT_WRITE,
-                (block->flags & RAM_SHARED ? MAP_SHARED : MAP_PRIVATE),
-                fd, 0);
-    if (area == MAP_FAILED) {
-        error_setg_errno(errp, errno,
-                         "unable to map backing store for hugepages");
-        close(fd);
-        goto error;
-    }
-
-    if (mem_prealloc) {
-        os_mem_prealloc(fd, area, memory);
-    }
-
-    block->fd = fd;
-    return area;
-
-error:
-    if (mem_prealloc) {
-        error_report("%s\n", error_get_pretty(*errp));
-        exit(1);
-    }
-    return NULL;
+    return getpagesize();
 }
 
-static void *file_ram_alloc(RAMBlock *block,
-                            ram_addr_t memory,
-                            const char *path,
-                            Error **errp)
+
+
+#define MAP_SYNC              0x0
+#define MAP_SHARED_VALIDATE   0x0
+
+void *qemu_ram_mmap(int fd,
+                    size_t size,
+                    size_t align,
+                    bool shared,
+                    bool is_pmem)
 {
-    char *filename;
-    char *sanitized_name;
-    char *c;
-    void *area;
-    int fd;
-    unsigned long hpagesize;
-
-    hpagesize = gethugepagesize(path);
-    if (!hpagesize) {
-        goto error;
-    }
-
-    if (memory < hpagesize) {
-        return NULL;
-    }
-
-    if (kvm_enabled() && !kvm_has_sync_mmu()) {
-        error_setg(errp,
-                   "host lacks kvm mmu notifiers, -mem-path unsupported");
-        goto error;
-    }
-
-    /* Make name safe to use with mkstemp by replacing '/' with '_'. */
-    sanitized_name = g_strdup(block->mr->name);
-    for (c = sanitized_name; *c != '\0'; c++) {
-        if (*c == '/')
-            *c = '_';
-    }
-
-    filename = g_strdup_printf("%s/qemu_back_mem.%s.XXXXXX", path,
-                               sanitized_name);
-    g_free(sanitized_name);
-
-    fd = mkstemp(filename);
-    if (fd < 0) {
-        error_setg_errno(errp, errno,
-                         "unable to create backing store for hugepages");
-        g_free(filename);
-        goto error;
-    }
-    unlink(filename);
-    g_free(filename);
-
-    memory = (memory+hpagesize-1) & ~(hpagesize-1);
+    int flags;
+    int map_sync_flags = 0;
+    int guardfd;
+    size_t offset;
+    size_t pagesize;
+    size_t total;
+    void *guardptr;
+    void *ptr;
 
     /*
-     * ftruncate is not supported by hugetlbfs in older
-     * hosts, so don't bother bailing out on errors.
-     * If anything goes wrong with it under other filesystems,
-     * mmap will fail.
+     * Note: this always allocates at least one extra page of virtual address
+     * space, even if size is already aligned.
      */
-    if (ftruncate(fd, memory)) {
-        perror("ftruncate");
+    total = size + align;
+
+#if defined(__powerpc64__) && defined(__linux__)
+    /* On ppc64 mappings in the same segment (aka slice) must share the same
+     * page size. Since we will be re-allocating part of this segment
+     * from the supplied fd, we should make sure to use the same page size, to
+     * this end we mmap the supplied fd.  In this case, set MAP_NORESERVE to
+     * avoid allocating backing store memory.
+     * We do this unless we are using the system page size, in which case
+     * anonymous memory is OK.
+     */
+    flags = MAP_PRIVATE;
+    pagesize = qemu_fd_getpagesize(fd);
+    if (fd == -1 || pagesize == qemu_real_host_page_size) {
+        guardfd = -1;
+        flags |= MAP_ANONYMOUS;
+    } else {
+        guardfd = fd;
+        flags |= MAP_NORESERVE;
+    }
+#else
+    guardfd = -1;
+    pagesize = qemu_real_host_page_size;
+    flags = MAP_PRIVATE | MAP_ANONYMOUS;
+#endif
+
+    guardptr = mmap(0, total, PROT_NONE, flags, guardfd, 0);
+
+    if (guardptr == MAP_FAILED) {
+        return MAP_FAILED;
     }
 
-    area = mmap(0, memory, PROT_READ | PROT_WRITE,
-                (block->flags & RAM_SHARED ? MAP_SHARED : MAP_PRIVATE),
-                fd, 0);
-    if (area == MAP_FAILED) {
-        error_setg_errno(errp, errno,
-                         "unable to map backing store for hugepages");
-        close(fd);
-        goto error;
+    assert(is_power_of_2(align));
+    /* Always align to host page size */
+    assert(align >= pagesize);
+
+    flags = MAP_FIXED;
+    flags |= fd == -1 ? MAP_ANONYMOUS : 0;
+    flags |= shared ? MAP_SHARED : MAP_PRIVATE;
+    if (shared && is_pmem) {
+        map_sync_flags = MAP_SYNC | MAP_SHARED_VALIDATE;
     }
 
-    if (mem_prealloc) {
-        os_mem_prealloc(fd, area, memory);
+    offset = QEMU_ALIGN_UP((uintptr_t)guardptr, align) - (uintptr_t)guardptr;
+
+    ptr = mmap(guardptr + offset, size, PROT_READ | PROT_WRITE,
+               flags | map_sync_flags, fd, 0);
+
+    if (ptr == MAP_FAILED && map_sync_flags) {
+        if (errno == ENOTSUP) {
+            char *proc_link, *file_name;
+            int len;
+            proc_link = g_strdup_printf("/proc/self/fd/%d", fd);
+            file_name = g_malloc0(PATH_MAX);
+            len = readlink(proc_link, file_name, PATH_MAX - 1);
+            if (len < 0) {
+                len = 0;
+            }
+            file_name[len] = '\0';
+            fprintf(stderr, "Warning: requesting persistence across crashes "
+                    "for backend file %s failed. Proceeding without "
+                    "persistence, data might become corrupted in case of host "
+                    "crash.\n", file_name);
+            g_free(proc_link);
+            g_free(file_name);
+        }
+        /*
+         * if map failed with MAP_SHARED_VALIDATE | MAP_SYNC,
+         * we will remove these flags to handle compatibility.
+         */
+        ptr = mmap(guardptr + offset, size, PROT_READ | PROT_WRITE,
+                   flags, fd, 0);
     }
 
-    block->fd = fd;
-    return area;
-
-error:
-    if (mem_prealloc) {
-        error_report("%s\n", error_get_pretty(*errp));
-        exit(1);
+    if (ptr == MAP_FAILED) {
+        munmap(guardptr, total);
+        return MAP_FAILED;
     }
-    return NULL;
+
+    if (offset > 0) {
+        munmap(guardptr, offset);
+    }
+
+    /*
+     * Leave a single PROT_NONE page allocated after the RAM block, to serve as
+     * a guard page guarding against potential buffer overflows.
+     */
+    total -= offset;
+    if (total > size + pagesize) {
+        munmap(ptr + size + pagesize, total - size - pagesize);
+    }
+
+    return ptr;
 }
+
+void qemu_ram_munmap(int fd, void *ptr, size_t size)
+{
+    size_t pagesize;
+
+    if (ptr) {
+        /* Unmap both the RAM block and the guard page */
+#if defined(__powerpc64__) && defined(__linux__)
+        pagesize = qemu_fd_getpagesize(fd);
+#else
+        pagesize = qemu_real_host_page_size;
+#endif
+        munmap(ptr, size + pagesize);
+    }
+}
+
 #endif
 
 static ram_addr_t find_ram_offset(ram_addr_t size)
@@ -1414,162 +1403,6 @@ static ram_addr_t ram_block_add(RAMBlock *new_block)
 
 #ifdef __linux__
 
-#define MAP_SYNC              0x0
-#define MAP_SHARED_VALIDATE   0x0
-
-size_t qemu_fd_getpagesize(int fd)
-{
-#ifdef CONFIG_LINUX
-    struct statfs fs;
-    int ret;
-
-    if (fd != -1) {
-        do {
-            ret = fstatfs(fd, &fs);
-        } while (ret != 0 && errno == EINTR);
-
-        if (ret == 0 && fs.f_type == HUGETLBFS_MAGIC) {
-            return fs.f_bsize;
-        }
-    }
-#ifdef __sparc__
-    /* SPARC Linux needs greater alignment than the pagesize */
-    return QEMU_VMALLOC_ALIGN;
-#endif
-#endif
-
-    return qemu_real_host_page_size;
-}
-
-void *qemu_ram_mmap(int fd,
-                    size_t size,
-                    size_t align,
-                    bool shared,
-                    bool is_pmem)
-{
-    int flags;
-    int map_sync_flags = 0;
-    int guardfd;
-    size_t offset;
-    size_t pagesize;
-    size_t total;
-    void *guardptr;
-    void *ptr;
-
-    /*
-     * Note: this always allocates at least one extra page of virtual address
-     * space, even if size is already aligned.
-     */
-    total = size + align;
-
-#if defined(__powerpc64__) && defined(__linux__)
-    /* On ppc64 mappings in the same segment (aka slice) must share the same
-     * page size. Since we will be re-allocating part of this segment
-     * from the supplied fd, we should make sure to use the same page size, to
-     * this end we mmap the supplied fd.  In this case, set MAP_NORESERVE to
-     * avoid allocating backing store memory.
-     * We do this unless we are using the system page size, in which case
-     * anonymous memory is OK.
-     */
-    flags = MAP_PRIVATE;
-    pagesize = qemu_fd_getpagesize(fd);
-    if (fd == -1 || pagesize == qemu_real_host_page_size) {
-        guardfd = -1;
-        flags |= MAP_ANONYMOUS;
-    } else {
-        guardfd = fd;
-        flags |= MAP_NORESERVE;
-    }
-#else
-    guardfd = -1;
-    pagesize = qemu_real_host_page_size;
-    flags = MAP_PRIVATE | MAP_ANONYMOUS;
-#endif
-
-    guardptr = mmap(0, total, PROT_NONE, flags, guardfd, 0);
-
-    if (guardptr == MAP_FAILED) {
-        return MAP_FAILED;
-    }
-
-    assert(is_power_of_2(align));
-    /* Always align to host page size */
-    assert(align >= pagesize);
-
-    flags = MAP_FIXED;
-    flags |= fd == -1 ? MAP_ANONYMOUS : 0;
-    flags |= shared ? MAP_SHARED : MAP_PRIVATE;
-    if (shared && is_pmem) {
-        map_sync_flags = MAP_SYNC | MAP_SHARED_VALIDATE;
-    }
-
-    offset = QEMU_ALIGN_UP((uintptr_t)guardptr, align) - (uintptr_t)guardptr;
-
-    ptr = mmap(guardptr + offset, size, PROT_READ | PROT_WRITE,
-               flags | map_sync_flags, fd, 0);
-
-    if (ptr == MAP_FAILED && map_sync_flags) {
-        if (errno == ENOTSUP) {
-            char *proc_link, *file_name;
-            int len;
-            proc_link = g_strdup_printf("/proc/self/fd/%d", fd);
-            file_name = g_malloc0(PATH_MAX);
-            len = readlink(proc_link, file_name, PATH_MAX - 1);
-            if (len < 0) {
-                len = 0;
-            }
-            file_name[len] = '\0';
-            fprintf(stderr, "Warning: requesting persistence across crashes "
-                    "for backend file %s failed. Proceeding without "
-                    "persistence, data might become corrupted in case of host "
-                    "crash.\n", file_name);
-            g_free(proc_link);
-            g_free(file_name);
-        }
-        /*
-         * if map failed with MAP_SHARED_VALIDATE | MAP_SYNC,
-         * we will remove these flags to handle compatibility.
-         */
-        ptr = mmap(guardptr + offset, size, PROT_READ | PROT_WRITE,
-                   flags, fd, 0);
-    }
-
-    if (ptr == MAP_FAILED) {
-        munmap(guardptr, total);
-        return MAP_FAILED;
-    }
-
-    if (offset > 0) {
-        munmap(guardptr, offset);
-    }
-
-    /*
-     * Leave a single PROT_NONE page allocated after the RAM block, to serve as
-     * a guard page guarding against potential buffer overflows.
-     */
-    total -= offset;
-    if (total > size + pagesize) {
-        munmap(ptr + size + pagesize, total - size - pagesize);
-    }
-
-    return ptr;
-}
-
-void qemu_ram_munmap(int fd, void *ptr, size_t size)
-{
-    size_t pagesize;
-
-    if (ptr) {
-        /* Unmap both the RAM block and the guard page */
-#if defined(__powerpc64__) && defined(__linux__)
-        pagesize = qemu_fd_getpagesize(fd);
-#else
-        pagesize = qemu_real_host_page_size;
-#endif
-        munmap(ptr, size + pagesize);
-    }
-}
-
 static void *file_ram_alloc_from_fd(RAMBlock *block,
                             ram_addr_t memory,
                             int fd,
@@ -1641,6 +1474,7 @@ ram_addr_t *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
 {
 
    RAMBlock *new_block;
+    int64_t file_size;
 
     if (xen_enabled()) {
         error_setg(errp, "-mem-path not supported with Xen");
@@ -1659,12 +1493,23 @@ ram_addr_t *qemu_ram_alloc_from_fd(ram_addr_t size, MemoryRegion *mr,
     }
 
     size = TARGET_PAGE_ALIGN(size);
+
+#if 0
+    file_size = get_file_size(fd);
+    if (file_size > 0 && file_size < size) {
+        error_setg(errp, "backing store %s size 0x%" PRIx64
+                   " does not match 'size' option 0x" RAM_ADDR_FMT,
+                   mem_path, file_size, size);
+        return NULL;
+    }
+#endif
+
     new_block = g_malloc0(sizeof(*new_block));
     new_block->mr = mr;
     new_block->length = size;
     new_block->flags = ram_flags ? RAM_SHARED : 0;
-    new_block->host = fd_ram_alloc(new_block, size,
-                                     fd, errp);
+    new_block->host = file_ram_alloc_from_fd(new_block, size,
+                                     fd,0, errp);//todosgx fix 4th param;
     if (!new_block->host) {
         g_free(new_block);
         return -1;
@@ -1680,10 +1525,17 @@ ram_addr_t qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
                                     Error **errp)
 {
     RAMBlock *new_block;
+    int64_t file_size;
 
     if (xen_enabled()) {
         error_setg(errp, "-mem-path not supported with Xen");
         return -1;
+    }
+
+    if (kvm_enabled() && !kvm_has_sync_mmu()) {
+        error_setg(errp,
+                   "host lacks kvm mmu notifiers, -mem-path unsupported");
+        return NULL;
     }
 
     if (phys_mem_alloc != qemu_anon_ram_alloc) {
@@ -1698,12 +1550,13 @@ ram_addr_t qemu_ram_alloc_from_file(ram_addr_t size, MemoryRegion *mr,
     }
 
     size = TARGET_PAGE_ALIGN(size);
+
     new_block = g_malloc0(sizeof(*new_block));
     new_block->mr = mr;
     new_block->length = size;
     new_block->flags = share ? RAM_SHARED : 0;
-    new_block->host = file_ram_alloc(new_block, size,
-                                     mem_path, errp);
+    new_block->host = file_ram_alloc_from_fd(new_block, size,
+                                     mem_path,!file_size, errp);
     if (!new_block->host) {
         g_free(new_block);
         return -1;

@@ -2978,6 +2978,8 @@ int main(int argc, char **argv, char **envp)
     qemu_add_opts(&qemu_msg_opts);
     qemu_add_opts(&qemu_name_opts);
     qemu_add_opts(&qemu_numa_opts);
+   
+    sgx_epc_register_opts();
 
     runstate_init();
 

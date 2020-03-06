@@ -16,7 +16,7 @@ static QemuOptsList *find_list(QemuOptsList **lists, const char *group,
     int i;
 
     for (i = 0; lists[i] != NULL; i++) {
-        printf("list[%x]=%s\n",i,lists[i]->name);
+        //printf("list[%x]=%s\n",i,lists[i]->name);
         if (strcmp(lists[i]->name, group) == 0)
             break;
     }
