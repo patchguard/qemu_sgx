@@ -186,21 +186,20 @@ int sgx_epc_get_section(int section_nr, uint64_t *addr, uint64_t *size)
     return 0;
 }
 
-static int sgx_epc_set_property(void *opaque, const char *name,
-                                const char *value, Error **errp)
+static int sgx_epc_set_property( const char *name,
+                                const char *value, void *opaque)
 {
     Object *obj = opaque;
     Error *err = NULL;
 
     object_property_parse(obj, value, name, &err);
     if (err != NULL) {
-        error_propagate(errp, err);
         return -1;
     }
     return 0;
 }
 
-static int sgx_epc_init_func(void *opaque, QemuOpts *opts, Error **errp)
+static int sgx_epc_init_func(QemuOpts *opts, void *opaque)
 {
     Error *err = NULL;
     Object *obj;
@@ -216,9 +215,6 @@ static int sgx_epc_init_func(void *opaque, QemuOpts *opts, Error **errp)
     object_property_set_bool(obj, true, "realized", &err);
 
 out:
-    if (err != NULL) {
-        error_propagate(errp, err);
-    }
     object_unref(obj);
     return err != NULL ? -1 : 0;
 }
