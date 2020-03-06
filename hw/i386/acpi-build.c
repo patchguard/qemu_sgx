@@ -1047,6 +1047,7 @@ static void patch_pci_windows(PcPciInfo *pci, uint8_t *start, unsigned size)
     }
 }
 
+
 static void
 build_ssdt(GArray *table_data, GArray *linker,
            AcpiCpuInfo *cpu, AcpiPmInfo *pm, AcpiMiscInfo *misc,
@@ -1059,6 +1060,7 @@ build_ssdt(GArray *table_data, GArray *linker,
     uint8_t *ssdt_ptr;
     int i;
     GArray *sgx_table = build_alloc_array();
+    PCMachineState *pcms = PC_MACHINE(qdev_get_machine());
 
     /* The current AML generator can cover the APIC ID range [0..255],
      * inclusive, for VCPU hotplug. */
@@ -1182,6 +1184,13 @@ build_ssdt(GArray *table_data, GArray *linker,
             build_append_array(sb_scope, hotplug_state.device_table);
             build_pci_bus_state_cleanup(&hotplug_state);
         }
+
+
+    if (pcms->sgx_epc->size) {
+        build_append_nameseg(table_data, "PCI0");
+
+
+    }
 
         build_package(sb_scope, op, 3);
         build_append_array(table_data, sb_scope);
@@ -1352,9 +1361,94 @@ build_mcfg_q35(GArray *table_data, GArray *linker, AcpiMcfgInfo *info)
 }
 
 static void
+build_append_namestringv(GArray *array, const char *format, va_list ap)
+{
+    /* It would be nicer to use g_string_vprintf but it's only there in 2.22 */
+    char *s;
+    int len;
+    va_list va_len;
+    char **segs;
+    char **segs_iter;
+    int seg_count = 0;
+
+    va_copy(va_len, ap);
+    len = vsnprintf(NULL, 0, format, va_len);
+    va_end(va_len);
+    len += 1;
+    s = g_new(typeof(*s), len);
+
+    len = vsnprintf(s, len, format, ap);
+
+    segs = g_strsplit(s, ".", 0);
+    g_free(s);
+
+    /* count segments */
+    segs_iter = segs;
+    while (*segs_iter) {
+        ++segs_iter;
+        ++seg_count;
+    }
+    /*
+     * ACPI 5.0 spec: 20.2.2 Name Objects Encoding:
+     * "SegCount can be from 1 to 255"
+     */
+    assert(seg_count > 0 && seg_count <= 255);
+
+    /* handle RootPath || PrefixPath */
+    s = *segs;
+    while (*s == '\\' || *s == '^') {
+        build_append_byte(array, *s);
+        ++s;
+    }
+
+    switch (seg_count) {
+    case 1:
+        if (!*s) {
+            build_append_byte(array, 0x0); /* NullName */
+        } else {
+            build_append_nameseg(array, s);
+        }
+        break;
+
+    case 2:
+        build_append_byte(array, 0x2E); /* DualNamePrefix */
+        build_append_nameseg(array, s);
+        build_append_nameseg(array, segs[1]);
+        break;
+    default:
+        build_append_byte(array, 0x2F); /* MultiNamePrefix */
+        build_append_byte(array, seg_count);
+
+        /* handle the 1st segment manually due to prefix/root path */
+        build_append_nameseg(array, s);
+
+        /* add the rest of segments */
+        segs_iter = segs + 1;
+        while (*segs_iter) {
+            build_append_nameseg(array, *segs_iter);
+            ++segs_iter;
+        }
+        break;
+    }
+    g_strfreev(segs);
+}
+
+
+static void build_append_namestring(GArray *array, const char *format, ...)
+{
+    va_list ap;
+
+    va_start(ap, format);
+    build_append_namestringv(array, format, ap);
+    va_end(ap);
+}
+
+static void
 build_dsdt(GArray *table_data, GArray *linker, AcpiMiscInfo *misc)
 {
     AcpiTableHeader *dsdt;
+    PCMachineState *pcms = PC_MACHINE(qdev_get_machine());
+    GArray *method;
 
     assert(misc->dsdt_code && misc->dsdt_size);
 
@@ -1362,6 +1456,46 @@ build_dsdt(GArray *table_data, GArray *linker, AcpiMiscInfo *misc)
     memcpy(dsdt, misc->dsdt_code, misc->dsdt_size);
 
     memset(dsdt, 0, sizeof *dsdt);
+
+
+    if(pcms->sgx_epc->size){
+    
+       build_append_nameseg(table_data, "EPC"); 
+
+       build_append_byte(table_data, 0x08); /* NameOp */ 
+       build_append_nameseg(table_data, "_HID");
+       build_append_namestring(table_data,"%s","INT0E0C");
+
+       build_append_byte(table_data, 0x08); /* NameOp */
+       build_append_nameseg(table_data, "_STR");
+       build_append_namestring(table_data,"%s","Enclave Page Cache 1.0");
+
+       build_append_byte(table_data, 0x08); /* NameOp */
+       build_append_nameseg(table_data, "_CRS");
+
+       build_append_byte(table_data, 0x8A); /* QWord Address Space Descriptor */
+       build_append_byte(table_data, 0x2B);
+       build_append_byte(table_data, 0x0);
+
+
+       build_append_byte(table_data, 0x0);
+       build_append_byte(table_data, 0xC); //0|4|8
+       build_append_byte(table_data, 0x1);
+
+       build_append_int(table_data, qint_get_int(0));
+       build_append_int(table_data, qint_get_int(pcms->sgx_epc->base));
+       build_append_int(table_data, qint_get_int(pcms->sgx_epc->base+pcms->sgx_epc->size-1));
+       build_append_int(table_data, qint_get_int(0));
+       build_append_int(table_data, qint_get_int(pcms->sgx_epc->size));
+
+       method = build_alloc_method("_STA",0);
+       build_append_byte(method, 0xa4); /* ReturnOp */
+       build_append_byte(method, 0x0F); 
+       build_append_and_cleanup_method(table_data, method);
+}
+
+
+
     build_header(linker, table_data, dsdt, "DSDT",
                  misc->dsdt_size, 1);
 }
