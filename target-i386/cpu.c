@@ -390,9 +390,9 @@ static const char *cpuid_apm_edx_feature_name[] = {
           CPUID_7_0_EBX_RDSEED */
 #define TCG_7_0_ECX_FEATURES 0
 #define TCG_7_0_EDX_FEATURES 0
-#define TCG_SGX_12_0_EAX_FEATURES 0
-#define TCG_SGX_12_1_EAX_FEATURES 0
-#define TCG_SGX_12_1_EBX_FEATURES 0
+#define TCG_12_0_EAX_FEATURES 0
+#define TCG_12_1_EAX_FEATURES 0
+#define TCG_12_1_EBX_FEATURES 0
 
 
 #define TCG_APM_FEATURES 0
@@ -465,26 +465,26 @@ static FeatureWordInfo feature_word_info[FEATURE_WORDS] = {
         .cpuid_reg = R_EDX,
         .tcg_features = TCG_7_0_EDX_FEATURES,
     },
-    [FEAT_SGX_12_0_EAX] = {
+    [FEAT_12_0_EAX] = {
         .feat_names = cpuid_12_0_eax_feature_name,
         .cpuid_eax= 0x12,
         .cpuid_needs_ecx = true, .cpuid_ecx = 0,
         .cpuid_reg = R_EAX,
-        .tcg_features = TCG_SGX_12_0_EAX_FEATURES,
+        .tcg_features = TCG_12_0_EAX_FEATURES,
     },
-    [FEAT_SGX_12_1_EAX] = {
+    [FEAT_12_1_EAX] = {
         .feat_names = cpuid_12_1_eax_feature_name,
         .cpuid_eax= 0x12,
         .cpuid_needs_ecx = true, .cpuid_ecx = 1,
         .cpuid_reg = R_EAX,
-        .tcg_features = TCG_SGX_12_1_EAX_FEATURES,
+        .tcg_features = TCG_12_1_EAX_FEATURES,
     },
-    [FEAT_SGX_12_1_EBX] = {
+    [FEAT_12_1_EBX] = {
         .feat_names = cpuid_12_1_ebx_feature_name,
         .cpuid_eax= 0x12,
         .cpuid_needs_ecx = true, .cpuid_ecx = 1,
         .cpuid_reg = R_EBX,
-        .tcg_features = TCG_SGX_12_1_EBX_FEATURES,
+        .tcg_features = TCG_12_1_EBX_FEATURES,
     },
 
     [FEAT_8000_0007_EDX] = {
@@ -2555,10 +2555,10 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
         *edx = kvm_arch_get_supported_cpuid(cs->kvm_state, 0x12, count, R_EDX);
 
         if (count == 0) {
-            *eax &= env->features[FEAT_SGX_12_0_EAX];
+            *eax &= env->features[FEAT_12_0_EAX];
         } else {
-            *eax &= env->features[FEAT_SGX_12_1_EAX];
-            *ebx &= env->features[FEAT_SGX_12_1_EBX];
+            *eax &= env->features[FEAT_12_1_EAX];
+            *ebx &= env->features[FEAT_12_1_EBX];
             *ecx &= env->features[FEAT_XSAVE_COMP_LO];
             *edx &= env->features[FEAT_XSAVE_COMP_HI];
 

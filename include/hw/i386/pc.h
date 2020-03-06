@@ -45,6 +45,8 @@ struct PCMachineState {
 #define PC_MACHINE_ACPI_DEVICE_PROP "acpi-device"
 #define PC_MACHINE_MEMHP_REGION_SIZE "hotplug-memory-region-size"
 #define PC_MACHINE_MAX_RAM_BELOW_4G "max-ram-below-4g"
+#define PC_MACHINE_EPC_SIZE         "epc"
+#define PC_MACHINE_EPC_BELOW_4G     "epc-below-4g"
 
 /**
  * PCMachineClass:

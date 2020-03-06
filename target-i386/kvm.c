@@ -1341,7 +1341,7 @@ static int kvm_put_msrs(X86CPU *cpu, int level)
             }
         }
         //todo has_msr_sgx
-        if (env->features[FEAT_7_0_ECX] & CPUID_7_0_ECX_SGX_LC) {
+        if (env->features[FEAT_7_0_ECX] & FEATURE_CONTROL_SGX_LC) {
             kvm_msr_entry_set(&msrs[n++], MSR_IA32_SGXLEPUBKEYHASH0,
                               env->msr_ia32_sgxlepubkeyhash[0]);
             kvm_msr_entry_set(&msrs[n++], MSR_IA32_SGXLEPUBKEYHASH1,
@@ -1664,10 +1664,12 @@ static int kvm_get_msrs(X86CPU *cpu)
         }
     }
 
-    msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH0;
-    msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH1;
-    msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH2;
-    msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH3;
+    if (env->features[FEAT_7_0_ECX] & FEATURE_CONTROL_SGX_LC) {
+        msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH0;
+        msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH1;
+        msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH2;
+        msrs[n++].index = MSR_IA32_SGXLEPUBKEYHASH3;
+    }
 
     msr_data.info.nmsrs = n;
     ret = kvm_vcpu_ioctl(CPU(cpu), KVM_GET_MSRS, &msr_data);

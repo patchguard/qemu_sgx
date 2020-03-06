@@ -1074,6 +1074,44 @@ typedef struct PcRomPciInfo {
     uint64_t w64_max;
 } PcRomPciInfo;
 
+#if 0 //todosgx
+static void pc_build_feature_control_file(PcGuestInfo *pcms)
+{
+    X86CPU *cpu = X86_CPU(ms->possible_cpus->cpus[0].cpu);
+    CPUX86State *env = &cpu->env;
+    uint32_t unused, ebx, ecx, edx;
+    uint64_t feature_control_bits = 0;
+    uint64_t *val;
+
+    cpu_x86_cpuid(env, 1, 0, &unused, &unused, &ecx, &edx);
+    if (ecx & CPUID_EXT_VMX) {
+        feature_control_bits |= FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
+    }
+
+    if ((edx & (CPUID_EXT2_MCE | CPUID_EXT2_MCA)) ==
+        (CPUID_EXT2_MCE | CPUID_EXT2_MCA) &&
+        (env->mcg_cap & MCG_LMCE_P)) {
+        feature_control_bits |= FEATURE_CONTROL_LMCE;
+    }
+
+    cpu_x86_cpuid(env, 0x7, 0, &unused, &ebx, &ecx, &unused);
+    if (ebx & CPUID_7_0_EBX_SGX) {
+        feature_control_bits |= FEATURE_CONTROL_SGX;
+    }
+    if (ecx & CPUID_7_0_ECX_SGX_LC) {
+        feature_control_bits |= FEATURE_CONTROL_SGX_LC;
+    }
+
+    if (!feature_control_bits) {
+        return;
+    }
+
+    val = g_malloc(sizeof(*val));
+    *val = cpu_to_le64(feature_control_bits | FEATURE_CONTROL_LOCKED);
+    fw_cfg_add_file(pcms->fw_cfg, "etc/msr_feature_control", val, sizeof(*val));
+}
+#endif
+
 static void pc_fw_cfg_guest_info(PcGuestInfo *guest_info)
 {
     PcRomPciInfo *info;
@@ -1101,6 +1139,8 @@ static void pc_fw_cfg_guest_info(PcGuestInfo *guest_info)
     /* Pass PCI hole info to guest via a side channel.
      * Required so guest PCI enumeration does the right thing. */
     fw_cfg_add_file(guest_info->fw_cfg, "etc/pci-info", info, sizeof *info);
+    //pc_build_feature_control_file(guest_info);
+
 }
 
 typedef struct PcGuestInfoState {
@@ -1707,6 +1747,40 @@ static void pc_machine_set_max_ram_below_4g(Object *obj, Visitor *v,
     pcms->max_ram_below_4g = value;
 }
 
+
+static void pc_machine_get_epc_size(Object *obj, Visitor *v, const char *name,
+                                    void *opaque, Error **errp)
+{
+    PCMachineState *pcms = PC_MACHINE(obj);
+    uint64_t value = pcms->sgx_epc->size;
+
+    visit_type_size(v, name, &value, errp);
+}
+
+static void pc_machine_set_epc_size(Object *obj, Visitor *v, const char *name,
+                                    void *opaque, Error **errp)
+{
+    PCMachineState *pcms = PC_MACHINE(obj);
+    Error *error = NULL;
+    uint64_t value;
+
+    visit_type_size(v, name, &value, &error);
+    if (error) {
+        error_propagate(errp, error);
+        return;
+    }
+    if (value & 0xfff) {
+        error_setg(&error,
+                   "Machine option '" PC_MACHINE_EPC_SIZE "=%"PRIx64"' must "
+                   "be a multiple of 0x1000 (4k page granularity)", value);
+        error_propagate(errp, error);
+        return;
+    }
+
+    pcms->sgx_epc->size = value;
+}
+
+
 static void pc_machine_initfn(Object *obj)
 {
     PCMachineState *pcms = PC_MACHINE(obj);
@@ -1719,6 +1793,17 @@ static void pc_machine_initfn(Object *obj)
                         pc_machine_get_max_ram_below_4g,
                         pc_machine_set_max_ram_below_4g,
                         NULL, NULL, NULL);
+
+    object_property_add(obj, PC_MACHINE_EPC_SIZE, "size",
+        pc_machine_get_epc_size, pc_machine_set_epc_size,
+        NULL, NULL, &error_abort);
+#if 0 //todosgx
+    object_property_add(oc, PC_MACHINE_EPC_BELOW_4G, "OnOffAuto",
+        pc_machine_get_epc_below_4g, pc_machine_set_epc_below_4g,
+        NULL, NULL, &error_abort);
+    object_class_property_set_description(oc, PC_MACHINE_EPC_BELOW_4G,
+        "Reserve the virtual EPC from memory below 4g", &error_abort);
+#endif
 }
 
 static void pc_machine_class_init(ObjectClass *oc, void *data)
