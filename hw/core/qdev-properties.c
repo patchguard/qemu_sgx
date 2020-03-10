@@ -377,6 +377,57 @@ PropertyInfo qdev_prop_string = {
 };
 
 /* --- pointer --- */
+static void get_hostmem(Object *obj, Visitor *v, void *opaque,
+                    const char *name, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    uint64_t *hostmem = qdev_get_prop_ptr(dev, prop);
+
+    char *str = NULL;
+
+    str = object_get_canonical_path_component(OBJECT(hostmem));
+
+    visit_type_str(v, &str, name, errp);
+}
+
+static void set_hostmem(Object *obj, Visitor *v, void *opaque,
+                    const char *name, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    uint64_t *hostmem = qdev_get_prop_ptr(dev, prop);
+    Error *local_err = NULL;
+    int i, pos;
+    char *str, *p;
+    bool ambiguous = false;
+
+    if (dev->realized) {
+        qdev_prop_set_after_realize(dev, name, errp);
+        return;
+    }
+
+    visit_type_str(v, &str, name, &local_err);
+    if (local_err) {
+        return;
+    }
+
+    printf("set_hostmem = %s\n",str);
+    printf("hostmem = %p\n",*hostmem);
+ 
+    *hostmem = object_resolve_path(str,&ambiguous);
+    printf("hostmem = %p\n",*hostmem);
+
+    g_free(str);
+    return;
+}
+
+PropertyInfo qdev_prop_hostmemorybackend = {
+    .name  = "str",
+    .legacy_name  = "devmem",
+    .get   = get_hostmem,
+    .set   = set_hostmem,
+};
 
 /* Not a proper property, just for dirty hacks.  TODO Remove it!  */
 PropertyInfo qdev_prop_ptr = {

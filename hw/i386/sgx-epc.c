@@ -22,10 +22,13 @@
 //#include "qemu/units.h"
 //#include "target/i386/cpu.h"
 
-
+#define FUNC_LOG_START printf("%s(%d)\n",__func__,__LINE__)
 
 static Property sgx_epc_properties[] = {
     DEFINE_PROP_UINT64("addr", SGXEPCDevice, addr, 0),
+    DEFINE_PROP_HOSTMEMORYBACKEND("memdev",SGXEPCDevice,hostmem),
+//    DEFINE_PROP_UINT64("memdev",SGXEPCDevice,hostmem,0),
+
 //todosgx    DEFINE_PROP_LINK("memdev", SGXEPCDevice, hostmem,
 //                    TYPE_MEMORY_BACKEND, HostMemoryBackend *),
     DEFINE_PROP_END_OF_LIST(),
@@ -34,6 +37,7 @@ static Property sgx_epc_properties[] = {
 static void sgx_epc_get_size(Object *obj, Visitor *v, const char *name,
                              void *opaque, Error **errp)
 {
+    FUNC_LOG_START;
     Error *local_err = NULL;
     uint64_t value;
 
@@ -49,13 +53,17 @@ static void sgx_epc_get_size(Object *obj, Visitor *v, const char *name,
 
 static void sgx_epc_init(Object *obj)
 {
+    FUNC_LOG_START;
     object_property_add(obj, SGX_EPC_SIZE_PROP, "uint64", sgx_epc_get_size,
                         NULL, NULL, NULL, &error_abort);
 }
 
 static void sgx_epc_realize(DeviceState *dev, Error **errp)
 {
+    FUNC_LOG_START;
     PCMachineState *pcms = PC_MACHINE(qdev_get_machine());
+    MemoryDeviceState *md = MEMORY_DEVICE(dev);
+    SGXEPCState *sgx_epc = pcms->sgx_epc;
     SGXEPCDevice *epc = SGX_EPC(dev);
 
     if (pcms->boot_cpus != 0) {
@@ -74,11 +82,24 @@ static void sgx_epc_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    error_setg(errp, "'" TYPE_SGX_EPC "' not supported");
+    epc->addr = sgx_epc->base + sgx_epc->size;
+
+    memory_region_add_subregion(&sgx_epc->mr, epc->addr - sgx_epc->base,
+                                host_memory_backend_get_memory(epc->hostmem,errp));
+
+    host_memory_backend_set_mapped(epc->hostmem, true);
+
+    sgx_epc->sections = g_renew(SGXEPCDevice *, sgx_epc->sections,
+                                sgx_epc->nr_sections + 1);
+    sgx_epc->sections[sgx_epc->nr_sections++] = epc;
+
+    sgx_epc->size += memory_device_get_region_size(md, errp);
+
 }
 
 static void sgx_epc_unrealize(DeviceState *dev, Error **errp)
 {
+    FUNC_LOG_START;
     SGXEPCDevice *epc = SGX_EPC(dev);
 
     host_memory_backend_set_mapped(epc->hostmem, false);
@@ -86,6 +107,7 @@ static void sgx_epc_unrealize(DeviceState *dev, Error **errp)
 
 static uint64_t sgx_epc_md_get_addr(const MemoryDeviceState *md)
 {
+    FUNC_LOG_START;
     const SGXEPCDevice *epc = SGX_EPC(md);
 
     return epc->addr;
@@ -94,18 +116,21 @@ static uint64_t sgx_epc_md_get_addr(const MemoryDeviceState *md)
 static void sgx_epc_md_set_addr(MemoryDeviceState *md, uint64_t addr,
                                 Error **errp)
 {
+    FUNC_LOG_START;
     object_property_set_uint(OBJECT(md), addr, SGX_EPC_ADDR_PROP, errp);
 }
 
 static uint64_t sgx_epc_md_get_plugged_size(const MemoryDeviceState *md,
                                             Error **errp)
 {
+    FUNC_LOG_START;
     return 0;
 }
 
 static MemoryRegion *sgx_epc_md_get_memory_region(MemoryDeviceState *md,
                                                   Error **errp)
 {
+    FUNC_LOG_START;
     SGXEPCDevice *epc = SGX_EPC(md);
 
     if (!epc->hostmem) {
@@ -119,6 +144,7 @@ static MemoryRegion *sgx_epc_md_get_memory_region(MemoryDeviceState *md,
 static void sgx_epc_md_fill_device_info(const MemoryDeviceState *md,
                                         MemoryDeviceInfo *info)
 {
+    FUNC_LOG_START;
     SGXEPCDeviceInfo *di = g_new0(SGXEPCDeviceInfo, 1);
     const SGXEPCDevice *epc = SGX_EPC(md);
     const DeviceState *dev = DEVICE(md);
@@ -135,6 +161,7 @@ static void sgx_epc_md_fill_device_info(const MemoryDeviceState *md,
 
 static void sgx_epc_class_init(ObjectClass *oc, void *data)
 {
+    FUNC_LOG_START;
     DeviceClass *dc = DEVICE_CLASS(oc);
     MemoryDeviceClass *mdc = MEMORY_DEVICE_CLASS(oc);
     dc->hotpluggable = false;
@@ -165,6 +192,7 @@ static TypeInfo sgx_epc_info = {
 
 static void sgx_epc_register_types(void)
 {
+    FUNC_LOG_START;
     type_register_static(&sgx_epc_info);
 }
 
@@ -172,10 +200,13 @@ type_init(sgx_epc_register_types)
 
 int sgx_epc_get_section(int section_nr, uint64_t *addr, uint64_t *size)
 {
+    FUNC_LOG_START;
     PCMachineState *pcms = PC_MACHINE(qdev_get_machine());
     SGXEPCDevice *epc;
 
     if (pcms->sgx_epc == NULL || pcms->sgx_epc->nr_sections <= section_nr) {
+        printf("sgx_epc=%p,\t,nr_sections=%p,section_nr=%p\n",pcms->sgx_epc,pcms->sgx_epc->nr_sections,section_nr);
+
         return 1;
     }
 
@@ -189,10 +220,11 @@ int sgx_epc_get_section(int section_nr, uint64_t *addr, uint64_t *size)
 static int sgx_epc_set_property( const char *name,
                                 const char *value, void *opaque)
 {
+    FUNC_LOG_START;
     Object *obj = opaque;
     Error *err = NULL;
-
-    object_property_parse(obj, value, name, &err);
+    printf("name = %s, value=%s\n",name,value);
+    object_property_parse(SGX_EPC(obj), value, name, &err);
     if (err != NULL) {
         return -1;
     }
@@ -201,13 +233,21 @@ static int sgx_epc_set_property( const char *name,
 
 static int sgx_epc_init_func(QemuOpts *opts, void *opaque)
 {
+    FUNC_LOG_START;
     Error *err = NULL;
     Object *obj;
 
     obj = object_new("sgx-epc");
+    SGXEPCDevice *epc = SGX_EPC(obj);
 
     qdev_set_id(DEVICE(obj), qemu_opts_id(opts));
-
+#if 0
+    object_property_add_link(obj, "memdev",TYPE_MEMORY_BACKEND,
+                             &epc->hostmem,
+                             NULL,
+                             OBJ_PROP_LINK_UNREF_ON_RELEASE,
+                             &err);
+#endif
     if (qemu_opt_foreach(opts, sgx_epc_set_property, obj, &err)) {
         goto out;
     }
@@ -221,6 +261,7 @@ out:
 
 void pc_machine_init_sgx_epc(PCMachineState *pcms,ram_addr_t above_4g_mem_size)
 {
+    FUNC_LOG_START;
     SGXEPCState *sgx_epc;
 
     if (!sgx_epc_enabled) {
@@ -268,6 +309,7 @@ static QemuOptsList sgx_epc_opts = {
 
 void sgx_epc_register_opts(void)
 {
+    FUNC_LOG_START;
     qemu_add_opts(&sgx_epc_opts);
 }
 

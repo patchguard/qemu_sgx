@@ -16,6 +16,7 @@ extern PropertyInfo qdev_prop_size;
 extern PropertyInfo qdev_prop_string;
 extern PropertyInfo qdev_prop_chr;
 extern PropertyInfo qdev_prop_ptr;
+extern PropertyInfo qdev_prop_hostmemorybackend;
 extern PropertyInfo qdev_prop_macaddr;
 extern PropertyInfo qdev_prop_losttickpolicy;
 extern PropertyInfo qdev_prop_bios_chs_trans;
@@ -133,6 +134,9 @@ extern PropertyInfo qdev_prop_arraylen;
  */
 #define DEFINE_PROP_PTR(_n, _s, _f)             \
     DEFINE_PROP(_n, _s, _f, qdev_prop_ptr, void*)
+
+#define DEFINE_PROP_HOSTMEMORYBACKEND(_n, _s, _f)      \ 
+    DEFINE_PROP(_n, _s, _f, qdev_prop_hostmemorybackend, HostMemoryBackend*)
 
 #define DEFINE_PROP_CHR(_n, _s, _f)             \
     DEFINE_PROP(_n, _s, _f, qdev_prop_chr, CharDriverState*)

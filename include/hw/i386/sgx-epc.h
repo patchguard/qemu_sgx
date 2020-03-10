@@ -40,7 +40,9 @@ typedef struct SGXEPCDevice {
 
     /* public */
     uint64_t addr;
+//    uint64_t hostmem;
     HostMemoryBackend *hostmem;
+//    void *hostmem;
 } SGXEPCDevice;
 
 /*

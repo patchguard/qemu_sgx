@@ -51,6 +51,7 @@ sgx_epc_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
     memory_region_init_ram_from_fd(&backend->mr, OBJECT(backend),
                                    name, backend->size,
                                    backend->share, fd, errp);
+    printf("backend = %p\n",backend);
     g_free(name);
 }
 

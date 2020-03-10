@@ -787,6 +787,7 @@ ObjectProperty *object_property_find(Object *obj, const char *name,
     ObjectProperty *prop;
 
     QTAILQ_FOREACH(prop, &obj->properties, node) {
+//printf("prop->name = %s\n",prop->name);
         if (strcmp(prop->name, name) == 0) {
             return prop;
         }

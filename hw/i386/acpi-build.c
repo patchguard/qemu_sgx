@@ -1460,15 +1460,32 @@ build_dsdt(GArray *table_data, GArray *linker, AcpiMiscInfo *misc)
 
     if(pcms->sgx_epc->size){
     
-       build_append_nameseg(table_data, "EPC"); 
+       build_append_nameseg(table_data, "EPC_"); 
 
        build_append_byte(table_data, 0x08); /* NameOp */ 
        build_append_nameseg(table_data, "_HID");
-       build_append_namestring(table_data,"%s","INT0E0C");
+       build_append_byte(table_data, 0x0c);  
+       build_append_byte(table_data, 0x25);  
+       build_append_byte(table_data, 0xd4);  
+       build_append_byte(table_data, 0x0e);  
+       build_append_byte(table_data, 0x0c);  
+       //build_append_namestring(table_data,"%s","INT0E0C");
 
        build_append_byte(table_data, 0x08); /* NameOp */
        build_append_nameseg(table_data, "_STR");
-       build_append_namestring(table_data,"%s","Enclave Page Cache 1.0");
+       //build_append_namestring(table_data,"%s","Enclave Page Cache 1.0");
+       build_append_byte(table_data, 0x11);  
+       build_append_byte(table_data, 0x31);  
+       build_append_byte(table_data, 0x0a);  
+       build_append_byte(table_data, 0x2E);  
+      
+       char* str = "Enclave Page Cache 1.0";
+       for( int i=0;i<strlen(str);i++)
+       {
+           build_append_byte(table_data, str[i]);  
+           build_append_byte(table_data, 0x00);  
+       };
+
 
        build_append_byte(table_data, 0x08); /* NameOp */
        build_append_nameseg(table_data, "_CRS");
@@ -1482,11 +1499,16 @@ build_dsdt(GArray *table_data, GArray *linker, AcpiMiscInfo *misc)
        build_append_byte(table_data, 0xC); //0|4|8
        build_append_byte(table_data, 0x1);
 
-       build_append_int(table_data, qint_get_int(0));
-       build_append_int(table_data, qint_get_int(pcms->sgx_epc->base));
-       build_append_int(table_data, qint_get_int(pcms->sgx_epc->base+pcms->sgx_epc->size-1));
-       build_append_int(table_data, qint_get_int(0));
-       build_append_int(table_data, qint_get_int(pcms->sgx_epc->size));
+       build_append_int(table_data, 0);
+       build_append_int(table_data, 0);
+       build_append_int(table_data, 1);
+       build_append_int(table_data, pcms->sgx_epc->base&0xffffffff);
+       build_append_int(table_data, 0);
+       build_append_int(table_data, pcms->sgx_epc->base+pcms->sgx_epc->size-1);
+       build_append_int(table_data, 0);
+       build_append_int(table_data, 0);
+       build_append_int(table_data, 0);
+       build_append_int(table_data, pcms->sgx_epc->size);
 
        method = build_alloc_method("_STA",0);
        build_append_byte(method, 0xa4); /* ReturnOp */

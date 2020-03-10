@@ -2521,6 +2521,7 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
             *eax = *ebx = *ecx = *edx = 0;
             break;
         }
+        printf("count = %d\n",count);
 
         /*
          * SGX sub-leafs CPUID.0x12.{0x2..N} enumerate EPC sections.  Retrieve
@@ -2535,11 +2536,15 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
                 *eax = *ebx = *ecx = *edx = 0;
                 break;
             }
+           
+            printf("epc_addr=%p,epc_size=%p\n",epc_addr,epc_size);
+
             host_cpuid(index, 2, eax, ebx, ecx, edx);
             *eax = (uint32_t)(epc_addr & 0xfffff000) | 0x1;
             *ebx = (uint32_t)(epc_addr >> 32);
             *ecx = (uint32_t)(epc_size & 0xfffff000) | (*ecx & 0xf);
             *edx = (uint32_t)(epc_size >> 32);
+        printf("cpuid(12-%d):\teax=%p,ebx=%p,ecx=%p,edx=%p\n",count,*eax,*ebx,*ecx,*edx);
             break;
         }
 
