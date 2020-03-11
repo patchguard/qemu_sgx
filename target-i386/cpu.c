@@ -2444,7 +2444,6 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
             *edx = 0;
         }
 
-        printf("cpuid(7):\teax=%p,ebx=%p,ecx=%p,edx=%p\n",*eax,*ebx,*ecx,*edx);
         break;
     case 9:
         /* Direct Cache Access Information Leaf */
@@ -2908,6 +2907,10 @@ static void x86_cpu_realizefn(DeviceState *dev, Error **errp)
 
     if (env->features[FEAT_7_0_EBX] && env->cpuid_level < 7) {
         env->cpuid_level = 7;
+    }
+
+    if ((env->features[FEAT_7_0_EBX] & CPUID_7_0_EBX_SGX) && env->cpuid_level < 18) {
+        env->cpuid_level = 0x12;
     }
 
     /* On AMD CPUs, some CPUID[8000_0001].EDX bits must match the bits on
